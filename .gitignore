@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.env.local
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.env.local
+.env.*.local
+
+# Uploads (don't commit user files)
+backend/static/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
