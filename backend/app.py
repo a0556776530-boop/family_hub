@@ -8,7 +8,7 @@ from config import Config
 # Initialize DB at module level so it survives the Werkzeug reloader
 _uri     = Config.MONGO_URI
 _db_name = _uri.rsplit('/', 1)[-1].split('?')[0] or 'family_hub'
-_client  = MongoClient(_uri)
+_client  = MongoClient(_uri, serverSelectionTimeoutMS=5000)
 
 class _MongoProxy:
     @property
@@ -65,4 +65,4 @@ if __name__ == '__main__':
     import os
     app = create_app()
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port, use_reloader=False, log_output=True)
