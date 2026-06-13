@@ -58,6 +58,14 @@ def create_app():
             os.path.join(app.config['UPLOAD_FOLDER'], 'moments'), filename
         )
 
+    @app.route('/api/health')
+    def health():
+        try:
+            mongo.db.command('ping')
+            return jsonify({'status': 'ok', 'db': 'connected'}), 200
+        except Exception as e:
+            return jsonify({'status': 'error', 'db': str(e)}), 500
+
     return app
 
 
