@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from pymongo import MongoClient
 from flask_bcrypt import Bcrypt
 from flask_socketio import SocketIO
