@@ -8,7 +8,7 @@ from config import Config
 # Initialize DB at module level so it survives the Werkzeug reloader
 _uri     = Config.MONGO_URI
 _db_name = _uri.rsplit('/', 1)[-1].split('?')[0] or 'family_hub'
-_client  = MongoClient(_uri, serverSelectionTimeoutMS=5000)
+_client  = MongoClient(_uri, serverSelectionTimeoutMS=5000, tlsAllowInvalidCertificates=True)
 
 class _MongoProxy:
     @property
