@@ -98,7 +98,7 @@ def delete_moment(moment_id):
     except Exception:
         return jsonify({'message': 'מזהה לא תקין'}), 400
 
-    moment = mongo.db.moments.find_one({'_id': oid})
+    moment = mongo.db.moments.find_one({'_id': oid, 'family_id': ObjectId(user.get('family_id'))})
     if not moment:
         return jsonify({'message': 'לא נמצא'}), 404
 

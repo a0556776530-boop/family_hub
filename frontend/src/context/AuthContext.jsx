@@ -38,8 +38,12 @@ export function AuthProvider({ children }) {
   }
 
   const refreshUser = async () => {
-    const res = await api.get('/api/auth/me')
-    setUser(res.data.user)
+    try {
+      const res = await api.get('/api/auth/me')
+      setUser(res.data.user)
+    } catch {
+      logout()
+    }
   }
 
   return (

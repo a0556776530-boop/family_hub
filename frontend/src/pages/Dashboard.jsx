@@ -32,11 +32,11 @@ export default function Dashboard() {
 
     Promise.all(reqs).then(([d, t, e, m, aw]) => {
       setData(d.data)
-      setTasks(t.data.tasks.slice(0, 3))
-      setEvents(e.data.events.filter(ev => ev.date >= today()).slice(0, 3))
+      setTasks(t.data.tasks?.slice(0, 3) || [])
+      setEvents((e.data.events || []).filter(ev => ev.date >= today()).slice(0, 3))
       if (m.data.moments?.length) setFeaturedMoment(m.data.moments[0])
-      if (aw) setAwaitingCount(aw.data.tasks.length)
-    }).finally(() => setLoading(false))
+      if (aw) setAwaitingCount(aw.data.tasks?.length || 0)
+    }).catch(() => {}).finally(() => setLoading(false))
   }, [isParent])
 
   if (loading) return <PageLoader />
@@ -214,7 +214,7 @@ export default function Dashboard() {
             <button onClick={() => navigate('/moments')}
               className="w-full relative rounded-2xl overflow-hidden shadow-sm active:scale-95 transition-transform">
               <img
-                src={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${featuredMoment.image_url}`}
+                src={featuredMoment.image_url}
                 alt={featuredMoment.caption || 'רגע משפחתי'}
                 className="w-full h-40 object-cover"
               />
