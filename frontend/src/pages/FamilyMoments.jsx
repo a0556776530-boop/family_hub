@@ -356,7 +356,7 @@ function UploadModal({ onClose, onUploaded }) {
                   <span className="text-white/50 text-sm">לחץ לבחירת תמונה</span>
                 </>}
           </button>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
 
           <input
             value={caption}
