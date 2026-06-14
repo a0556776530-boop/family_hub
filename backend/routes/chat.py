@@ -58,6 +58,23 @@ def get_messages():
     msgs.reverse()
     return jsonify({'messages': [message_public(m) for m in msgs]}), 200
 
+@chat_bp.route('/messages/<message_id>', methods=['DELETE'])
+@require_auth
+def delete_message(message_id):
+    user = request.current_user
+    msg = mongo.db.messages.find_one({'_id': ObjectId(message_id)})
+    if not msg:
+        return jsonify({'error': 'not_found'}), 404
+    if msg.get('sender_id') != str(user['_id']):
+        return jsonify({'error': 'forbidden'}), 403
+    mongo.db.messages.delete_one({'_id': ObjectId(message_id)})
+    try:
+        socketio.emit('delete_message', {'id': message_id}, to=user['family_id'])
+    except Exception:
+        pass
+    return jsonify({'message': 'נמחק'}), 200
+
+
 # ── SocketIO events ──────────────────────────────────────────────
 @socketio.on('join_family')
 def on_join(data):

@@ -51,6 +51,9 @@ export default function FamilyBoard() {
     socket.on('new_message', msg => {
       setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
     })
+    socket.on('delete_message', ({ id }) => {
+      setMessages(prev => prev.filter(m => m.id !== id))
+    })
     socket.on('user_typing', ({ name }) => {
       setTyping(`${name} מקליד...`)
       setTimeout(() => setTyping(''), 2500)
@@ -109,7 +112,13 @@ export default function FamilyBoard() {
           ) : (
             <div className="columns-2 gap-3 space-y-0">
               {messages.map(msg => (
-                <StickyNote key={msg.id} message={msg} isMe={msg.sender_id === user?.id} />
+                <StickyNote key={msg.id} message={msg} isMe={msg.sender_id === user?.id}
+                  onDelete={async () => {
+                    try {
+                      await api.delete(`/api/chat/messages/${msg.id}`)
+                      setMessages(prev => prev.filter(m => m.id !== msg.id))
+                    } catch { /* silent */ }
+                  }} />
               ))}
             </div>
           )}
@@ -144,8 +153,8 @@ export default function FamilyBoard() {
             type="submit"
             disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 active:scale-90 transition-transform disabled:opacity-40">
-            <svg className="w-4 h-4 text-white rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>
         </form>
@@ -156,14 +165,22 @@ export default function FamilyBoard() {
   )
 }
 
-function StickyNote({ message, isMe }) {
+function StickyNote({ message, isMe, onDelete }) {
   const color = colorForSender(message.sender_id)
   const time  = message.created_at
     ? new Date(message.created_at).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
     : ''
 
   return (
-    <div className={`break-inside-avoid mb-3 rounded-2xl border p-3 shadow-sm ${color} ${isMe ? 'ring-2 ring-blue-300 dark:ring-blue-700' : ''}`}>
+    <div className={`break-inside-avoid mb-3 rounded-2xl border p-3 shadow-sm relative ${color} ${isMe ? 'ring-2 ring-blue-300 dark:ring-blue-700' : ''}`}>
+      {isMe && (
+        <button onClick={onDelete}
+          className="absolute top-2 left-2 w-5 h-5 rounded-full bg-black/10 hover:bg-red-400 hover:text-white flex items-center justify-center transition-colors">
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
       <div className="flex items-center gap-2 mb-2">
         <div className="w-6 h-6 rounded-full bg-white/60 dark:bg-black/20 flex items-center justify-center overflow-hidden shrink-0">
           {message.avatar_url
