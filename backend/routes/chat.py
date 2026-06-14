@@ -62,17 +62,21 @@ def get_messages():
 @require_auth
 def delete_message(message_id):
     user = request.current_user
-    msg = mongo.db.messages.find_one({'_id': ObjectId(message_id)})
+    try:
+        oid = ObjectId(message_id)
+    except Exception:
+        return jsonify({'error': 'invalid_id'}), 400
+    msg = mongo.db.messages.find_one({'_id': oid})
     if not msg:
         return jsonify({'error': 'not_found'}), 404
     if str(msg.get('sender_id', '')) != str(user['_id']):
-        return jsonify({'error': 'forbidden', 'message': 'אין הרשאה למחוק הודעה זו'}), 403
-    mongo.db.messages.delete_one({'_id': ObjectId(message_id)})
+        return jsonify({'error': 'forbidden'}), 403
+    mongo.db.messages.delete_one({'_id': oid})
     try:
         socketio.emit('delete_message', {'id': message_id}, to=user['family_id'])
     except Exception:
         pass
-    return jsonify({'message': 'נמחק'}), 200
+    return jsonify({'ok': True}), 200
 
 
 # ── SocketIO events ──────────────────────────────────────────────
