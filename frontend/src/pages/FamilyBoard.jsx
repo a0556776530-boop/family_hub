@@ -29,6 +29,7 @@ export default function FamilyBoard() {
   const [typing, setTyping]     = useState('')
   const [loading, setLoading]   = useState(true)
   const [sending, setSending]   = useState(false)
+  const [sendError, setSendError] = useState('')
 
   // Load history
   useEffect(() => {
@@ -69,17 +70,20 @@ export default function FamilyBoard() {
   }
 
   const send = async (e) => {
-    e.preventDefault()
+    e?.preventDefault()
     const content = input.trim()
-    if (!content) return
+    if (!content || sending) return
     setSending(true)
+    setSendError('')
     setInput('')
     try {
       const res = await api.post('/api/chat/messages', { content })
       const msg = res.data.message
       setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
-    } catch {
+    } catch (err) {
       setInput(content)
+      setSendError(err.response?.data?.message || 'שגיאה בשליחה, נסה שוב')
+      setTimeout(() => setSendError(''), 3000)
     } finally {
       setSending(false)
     }
@@ -119,6 +123,9 @@ export default function FamilyBoard() {
       {/* Input bar */}
       <div className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
         style={{ paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
+        {sendError && (
+          <p className="text-red-500 text-xs text-center px-4 pb-1">{sendError}</p>
+        )}
         <form onSubmit={send} className="flex items-center gap-3 px-4 py-3 max-w-lg mx-auto">
           <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0 overflow-hidden">
             {user?.avatar_url
@@ -128,6 +135,7 @@ export default function FamilyBoard() {
           <input
             value={input}
             onChange={onTyping}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send(e)}
             placeholder="כתוב הודעה..."
             className="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white placeholder:text-gray-400 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
