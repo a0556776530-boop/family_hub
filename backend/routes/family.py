@@ -129,6 +129,22 @@ def remove_member(member_id):
     return jsonify({'family': family_public(fam, members)}), 200
 
 
+@family_bp.route('/rename', methods=['PATCH'])
+@require_auth
+def rename_family():
+    user = request.current_user
+    if user.get('role') not in ('admin', 'parent'):
+        return jsonify({'error': 'forbidden', 'message': 'רק מנהל יכול לשנות את שם המשפחה'}), 403
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'missing_name', 'message': 'שם המשפחה הוא שדה חובה'}), 400
+    mongo.db.families.update_one({'_id': ObjectId(user['family_id'])}, {'$set': {'name': name}})
+    fam = mongo.db.families.find_one({'_id': ObjectId(user['family_id'])})
+    members = get_members(fam)
+    return jsonify({'family': family_public(fam, members)}), 200
+
+
 @family_bp.route('/leave', methods=['POST'])
 @require_auth
 def leave_family():

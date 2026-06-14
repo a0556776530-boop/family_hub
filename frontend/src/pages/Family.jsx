@@ -8,9 +8,12 @@ import api from '../api/client'
 export default function Family() {
   const { user }         = useAuth()
   const { family, refreshFamily } = useFamily()
-  const [copied, setCopied]       = useState(false)
+  const [copied, setCopied]         = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
-  const [removing, setRemoving]   = useState(null)
+  const [removing, setRemoving]     = useState(null)
+  const [editName, setEditName]     = useState(false)
+  const [nameVal, setNameVal]       = useState('')
+  const [savingName, setSavingName] = useState(false)
 
   const removeMember = async (memberId) => {
     if (!confirm('להסיר את החבר מהמשפחה?')) return
@@ -39,6 +42,19 @@ export default function Family() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const openEditName = () => { setNameVal(family.name); setEditName(true) }
+  const saveName = async () => {
+    if (!nameVal.trim()) return
+    setSavingName(true)
+    try {
+      await api.patch('/api/family/rename', { name: nameVal.trim() })
+      await refreshFamily()
+      setEditName(false)
+    } catch (e) {
+      alert(e.response?.data?.message || 'שגיאה')
+    } finally { setSavingName(false) }
+  }
+
   const copyLink = () => {
     const link = `${window.location.origin}/join/${family.invite_code}`
     navigator.clipboard.writeText(link)
@@ -60,8 +76,30 @@ export default function Family() {
             <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-3xl">
               👨‍👩‍👧‍👦
             </div>
-            <div>
-              <h2 className="text-xl font-extrabold">משפחת {family.name}</h2>
+            <div className="flex-1">
+              {editName ? (
+                <div className="flex items-center gap-2">
+                  <input autoFocus value={nameVal} onChange={e => setNameVal(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveName()}
+                    className="bg-white/20 text-white placeholder:text-white/50 rounded-xl px-3 py-1.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-white/50 w-32" />
+                  <button onClick={saveName} disabled={savingName}
+                    className="bg-white text-blue-600 text-xs font-bold px-3 py-1.5 rounded-xl active:scale-95">
+                    {savingName ? '...' : 'שמור'}
+                  </button>
+                  <button onClick={() => setEditName(false)} className="text-white/60 text-xs">ביטול</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-extrabold">משפחת {family.name}</h2>
+                  {user?.role === 'admin' && (
+                    <button onClick={openEditName} className="text-white/60 hover:text-white transition-colors">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
               <p className="text-blue-200 text-sm">{family.member_count} חברים · רמה {family.level}</p>
             </div>
           </div>
