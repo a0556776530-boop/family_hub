@@ -18,6 +18,31 @@ def message_public(m):
         'created_at': m['created_at'].isoformat() if isinstance(m.get('created_at'), datetime) else m.get('created_at'),
     }
 
+@chat_bp.route('/messages', methods=['POST'])
+@require_auth
+def send_message():
+    user = request.current_user
+    if not user.get('family_id'):
+        return jsonify({'error': 'no_family'}), 403
+    data = request.get_json() or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': 'empty_message'}), 400
+    result = mongo.db.messages.insert_one({
+        'family_id':   user['family_id'],
+        'sender_id':   str(user['_id']),
+        'sender_name': user.get('name', ''),
+        'avatar_url':  user.get('avatar_url', ''),
+        'content':     content,
+        'type':        'text',
+        'created_at':  datetime.now(timezone.utc),
+    })
+    msg = mongo.db.messages.find_one({'_id': result.inserted_id})
+    pub = message_public(msg)
+    socketio.emit('new_message', pub, room=user['family_id'])
+    return jsonify({'message': pub}), 201
+
+
 @chat_bp.route('/messages', methods=['GET'])
 @require_auth
 def get_messages():

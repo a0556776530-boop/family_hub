@@ -37,16 +37,18 @@ export default function FamilyBoard() {
     }).finally(() => setLoading(false))
   }, [])
 
-  // SocketIO
+  // SocketIO — real-time updates only, not required for sending
   useEffect(() => {
     if (!user?.family_id) return
-    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000', { transports: ['websocket'] })
+    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5000', {
+      transports: ['websocket', 'polling'],
+    })
     socketRef.current = socket
 
     socket.emit('join_family', { family_id: user.family_id })
 
     socket.on('new_message', msg => {
-      setMessages(prev => [...prev, msg])
+      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
     })
     socket.on('user_typing', ({ name }) => {
       setTyping(`${name} מקליד...`)
@@ -69,17 +71,18 @@ export default function FamilyBoard() {
   const send = async (e) => {
     e.preventDefault()
     const content = input.trim()
-    if (!content || !socketRef.current) return
+    if (!content) return
     setSending(true)
-    socketRef.current.emit('send_message', {
-      family_id:   user.family_id,
-      sender_id:   user.id,
-      sender_name: user.name,
-      avatar_url:  user.avatar_url || '',
-      content,
-    })
     setInput('')
-    setSending(false)
+    try {
+      const res = await api.post('/api/chat/messages', { content })
+      const msg = res.data.message
+      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
+    } catch {
+      setInput(content)
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
