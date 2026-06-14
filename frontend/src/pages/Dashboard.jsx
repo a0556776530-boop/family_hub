@@ -130,7 +130,7 @@ export default function Dashboard() {
               { label: 'רגעים', emoji: '📸', to: '/moments', bg: 'bg-pink-50 dark:bg-pink-900/20' },
             ].map(s => (
               <button key={s.to} onClick={() => navigate(s.to)}
-                className={`${s.bg} rounded-2xl p-3 flex flex-col items-center gap-1.5 active:scale-95 transition-transform shadow-sm`}>
+                className={`${s.bg} w-full rounded-2xl p-3 flex flex-col items-center gap-1.5 active:scale-95 transition-transform shadow-sm cursor-pointer`}>
                 <span className="text-2xl">{s.emoji}</span>
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{s.label}</span>
               </button>
