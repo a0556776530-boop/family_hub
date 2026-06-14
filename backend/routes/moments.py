@@ -8,9 +8,9 @@ from utils.jwt_utils import require_auth
 import os
 
 cloudinary.config(
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', 'drigg05eh'),
-    api_key    = os.environ.get('CLOUDINARY_API_KEY', '365916188152834'),
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET', ''),
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key    = os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET'),
     secure     = True
 )
 
