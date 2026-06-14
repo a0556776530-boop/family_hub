@@ -91,7 +91,7 @@ export default function Family() {
               ) : (
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-extrabold">משפחת {family.name}</h2>
-                  {user?.role === 'admin' && (
+                  {(user?.role === 'admin' || user?.role === 'parent') && (
                     <button onClick={openEditName} className="text-white/60 hover:text-white transition-colors">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -115,7 +115,7 @@ export default function Family() {
         </div>
 
         {/* Invite code */}
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'parent') && (
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <p className="text-gray-500 text-sm font-medium mb-3">קוד הזמנה</p>
             <div className="flex items-center gap-3">
@@ -154,7 +154,7 @@ export default function Family() {
           <div className="divide-y divide-gray-50">
             {sorted.map((member, idx) => (
               <MemberRow key={member.id} member={member} rank={idx + 1} isMe={member.id === user?.id}
-                canRemove={user?.role === 'admin' && member.id !== user?.id}
+                canRemove={(user?.role === 'admin' || user?.role === 'parent') && member.id !== user?.id}
                 onRemove={() => removeMember(member.id)}
                 removing={removing === member.id} />
             ))}
