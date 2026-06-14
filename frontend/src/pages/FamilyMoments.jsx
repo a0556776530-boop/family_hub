@@ -321,7 +321,7 @@ function UploadModal({ onClose, onUploaded }) {
       const res = await api.post('/api/moments/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       onUploaded(res.data.moment)
     } catch (err) {
-      setError(err.response?.data?.message || 'שגיאה בהעלאה')
+      setError(err.response?.data?.message || err.message || `שגיאה בהעלאה (${err.response?.status || 'network'})`)
     } finally {
       setLoading(false)
     }
