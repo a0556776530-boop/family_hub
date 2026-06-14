@@ -8,5 +8,5 @@ class Config:
     JWT_SECRET         = os.environ.get('JWT_SECRET', 'dev-secret-change-in-production')
     FRONTEND_URL       = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
     UPLOAD_FOLDER      = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
-    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 20 * 1024 * 1024))
+    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 100 * 1024 * 1024))
     JWT_EXPIRY_DAYS    = 7
