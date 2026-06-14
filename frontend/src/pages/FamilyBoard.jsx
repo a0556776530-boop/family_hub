@@ -82,7 +82,8 @@ export default function FamilyBoard() {
       setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg])
     } catch (err) {
       setInput(content)
-      setSendError(err.response?.data?.message || 'שגיאה בשליחה, נסה שוב')
+      const detail = err.response?.data?.message || err.response?.data?.error || err.message || 'שגיאה'
+      setSendError(`שגיאה ${err.response?.status || ''}: ${detail}`)
       setTimeout(() => setSendError(''), 3000)
     } finally {
       setSending(false)
