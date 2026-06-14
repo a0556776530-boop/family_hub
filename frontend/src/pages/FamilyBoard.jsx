@@ -114,10 +114,8 @@ export default function FamilyBoard() {
               {messages.map(msg => (
                 <StickyNote key={msg.id} message={msg} isMe={msg.sender_id === user?.id}
                   onDelete={async () => {
-                    try {
-                      await api.delete(`/api/chat/messages/${msg.id}`)
-                      setMessages(prev => prev.filter(m => m.id !== msg.id))
-                    } catch { /* silent */ }
+                    await api.delete(`/api/chat/messages/${msg.id}`)
+                    setMessages(prev => prev.filter(m => m.id !== msg.id))
                   }} />
               ))}
             </div>
@@ -153,8 +151,8 @@ export default function FamilyBoard() {
             type="submit"
             disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 active:scale-90 transition-transform disabled:opacity-40">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
+            <svg className="w-4 h-4 text-white scale-x-[-1]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
             </svg>
           </button>
         </form>
