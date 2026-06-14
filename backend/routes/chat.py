@@ -39,7 +39,10 @@ def send_message():
     })
     msg = mongo.db.messages.find_one({'_id': result.inserted_id})
     pub = message_public(msg)
-    socketio.emit('new_message', pub, room=user['family_id'])
+    try:
+        socketio.emit('new_message', pub, to=user['family_id'])
+    except Exception:
+        pass
     return jsonify({'message': pub}), 201
 
 
