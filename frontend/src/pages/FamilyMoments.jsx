@@ -294,21 +294,102 @@ function Lightbox({ moments, index, currentUserId, onClose, onPrev, onNext, onDe
   )
 }
 
+// ── In-App Camera ─────────────────────────────────────────────────────────────
+function InAppCamera({ onCapture, onClose }) {
+  const videoRef  = useRef(null)
+  const streamRef = useRef(null)
+  const [ready, setReady]   = useState(false)
+  const [facing, setFacing] = useState('environment')
+
+  const startCamera = async (facingMode) => {
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => { videoRef.current.play(); setReady(true) }
+      }
+    } catch {
+      onClose()
+    }
+  }
+
+  useEffect(() => {
+    startCamera(facing)
+    return () => streamRef.current?.getTracks().forEach(t => t.stop())
+  }, [facing])
+
+  const capture = () => {
+    const video = videoRef.current
+    const canvas = document.createElement('canvas')
+    canvas.width  = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    canvas.toBlob(blob => {
+      const file = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' })
+      streamRef.current?.getTracks().forEach(t => t.stop())
+      onCapture(file, URL.createObjectURL(blob))
+    }, 'image/jpeg', 0.92)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+      <div className="flex items-center justify-between px-4 pt-4 pb-2">
+        <button onClick={() => { streamRef.current?.getTracks().forEach(t => t.stop()); onClose() }}
+          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+        <button onClick={() => setFacing(f => f === 'environment' ? 'user' : 'environment')}
+          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white text-xl">
+          🔄
+        </button>
+      </div>
+
+      <div className="flex-1 relative overflow-hidden">
+        <video ref={videoRef} playsInline muted autoPlay
+          className="w-full h-full object-cover" />
+        {!ready && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-white text-lg animate-pulse">פותח מצלמה...</span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center py-8">
+        <button onClick={capture} disabled={!ready}
+          className="w-20 h-20 rounded-full bg-white border-4 border-white/40 active:scale-90 transition-transform disabled:opacity-40 shadow-2xl" />
+      </div>
+    </div>
+  )
+}
+
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 function UploadModal({ onClose, onUploaded }) {
   const fileRef   = useRef(null)
-  const cameraRef = useRef(null)
-  const [file, setFile]       = useState(null)
-  const [preview, setPreview] = useState(null)
-  const [caption, setCaption] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState('')
+  const [file, setFile]         = useState(null)
+  const [preview, setPreview]   = useState(null)
+  const [caption, setCaption]   = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [showCam, setShowCam]   = useState(false)
 
   const onFile = (e) => {
     const f = e.target.files?.[0]
     if (!f) return
     setFile(f)
     setPreview(URL.createObjectURL(f))
+  }
+
+  const onCapture = (f, url) => {
+    setFile(f)
+    setPreview(url)
+    setShowCam(false)
   }
 
   const submit = async (e) => {
@@ -329,58 +410,66 @@ function UploadModal({ onClose, onUploaded }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-gray-900 rounded-t-3xl p-5 pb-10 border-t border-white/10">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-lg font-bold text-white">רגע חדש 📸</h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+    <>
+      {showCam && <InAppCamera onCapture={onCapture} onClose={() => setShowCam(false)} />}
 
-        <form onSubmit={submit} className="space-y-4">
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
-
-          {preview ? (
-            <button type="button" onClick={() => fileRef.current?.click()}
-              className="w-full rounded-2xl border-2 border-blue-500/50 h-56 overflow-hidden">
-              <img src={preview} className="w-full h-full object-cover" alt="" />
+      <div className="fixed inset-0 z-50 flex items-end justify-center">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative w-full max-w-lg bg-gray-900 rounded-t-3xl p-5 pb-10 border-t border-white/10">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-lg font-bold text-white">רגע חדש 📸</h3>
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => cameraRef.current?.click()}
-                className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all">
-                <span className="text-3xl">📷</span>
-                <span className="text-white/60 text-sm font-medium">צלם עכשיו</span>
-              </button>
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all">
-                <span className="text-3xl">🖼️</span>
-                <span className="text-white/60 text-sm font-medium">מהגלריה</span>
-              </button>
-            </div>
-          )}
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
-          <input ref={cameraRef} type="file" accept="image/*" capture="camera" className="hidden" onChange={onFile} />
+          </div>
 
-          <input
-            value={caption}
-            onChange={e => setCaption(e.target.value)}
-            placeholder="מה קורה בתמונה? (אופציונלי)"
-            maxLength={200}
-            className="w-full bg-white/5 border border-white/10 text-white placeholder:text-white/30 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <form onSubmit={submit} className="space-y-4">
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-          <button type="submit" disabled={loading || !file}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-2xl active:scale-95 transition-all disabled:opacity-40 shadow-lg shadow-blue-900/40">
-            {loading ? 'מעלה...' : 'שתף רגע ✨'}
-          </button>
-        </form>
+            {preview ? (
+              <div className="relative w-full rounded-2xl h-56 overflow-hidden">
+                <img src={preview} className="w-full h-full object-cover" alt="" />
+                <button type="button" onClick={() => { setFile(null); setPreview(null) }}
+                  className="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setShowCam(true)}
+                  className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all active:scale-95">
+                  <span className="text-3xl">📷</span>
+                  <span className="text-white/60 text-sm font-medium">צלם עכשיו</span>
+                </button>
+                <button type="button" onClick={() => fileRef.current?.click()}
+                  className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all active:scale-95">
+                  <span className="text-3xl">🖼️</span>
+                  <span className="text-white/60 text-sm font-medium">מהגלריה</span>
+                </button>
+              </div>
+            )}
+            <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
+
+            <input
+              value={caption}
+              onChange={e => setCaption(e.target.value)}
+              placeholder="מה קורה בתמונה? (אופציונלי)"
+              maxLength={200}
+              className="w-full bg-white/5 border border-white/10 text-white placeholder:text-white/30 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+
+            <button type="submit" disabled={loading || !file}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-2xl active:scale-95 transition-all disabled:opacity-40 shadow-lg shadow-blue-900/40">
+              {loading ? 'מעלה...' : 'שתף רגע ✨'}
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
