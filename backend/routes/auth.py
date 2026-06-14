@@ -75,3 +75,42 @@ def login():
 @require_auth
 def me():
     return jsonify({'user': user_public(request.current_user)}), 200
+
+
+@auth_bp.route('/profile', methods=['PATCH'])
+@require_auth
+def update_profile():
+    user = request.current_user
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'missing_name', 'message': 'שם הוא שדה חובה'}), 400
+    mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'name': name}})
+    updated = mongo.db.users.find_one({'_id': user['_id']})
+    return jsonify({'user': user_public(updated)}), 200
+
+
+@auth_bp.route('/avatar', methods=['POST'])
+@require_auth
+def update_avatar():
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(
+        cloud_name=os.environ.get('CLOUDINARY_CLOUD_NAME'),
+        api_key=os.environ.get('CLOUDINARY_API_KEY'),
+        api_secret=os.environ.get('CLOUDINARY_API_SECRET'),
+        secure=True
+    )
+    user = request.current_user
+    file = request.files.get('avatar')
+    if not file or not file.filename:
+        return jsonify({'error': 'no_file'}), 400
+    result = cloudinary.uploader.upload(
+        file,
+        folder='family_hub/avatars',
+        transformation=[{'width': 200, 'height': 200, 'crop': 'fill', 'gravity': 'face'}]
+    )
+    avatar_url = result['secure_url']
+    mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'avatar_url': avatar_url}})
+    updated = mongo.db.users.find_one({'_id': user['_id']})
+    return jsonify({'user': user_public(updated)}), 200

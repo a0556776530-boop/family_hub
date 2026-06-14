@@ -39,7 +39,7 @@ export function FamilyProvider({ children }) {
   }
 
   return (
-    <FamilyContext.Provider value={{ family, loading, fetchFamily, createFamily, joinFamily }}>
+    <FamilyContext.Provider value={{ family, loading, fetchFamily, refreshFamily: fetchFamily, createFamily, joinFamily }}>
       {children}
     </FamilyContext.Provider>
   )

@@ -106,6 +106,29 @@ def get_family():
     return jsonify({'family': family_public(fam, members)}), 200
 
 
+@family_bp.route('/members/<member_id>', methods=['DELETE'])
+@require_auth
+def remove_member(member_id):
+    user = request.current_user
+    if user.get('role') not in ('admin', 'parent'):
+        return jsonify({'error': 'forbidden', 'message': 'רק מנהל יכול להסיר חברים'}), 403
+    if str(user['_id']) == member_id:
+        return jsonify({'error': 'cannot_remove_self', 'message': 'לא ניתן להסיר את עצמך'}), 400
+
+    fam = mongo.db.families.find_one({'_id': ObjectId(user['family_id'])})
+    if not fam:
+        return jsonify({'error': 'family_not_found'}), 404
+    if str(fam['admin_id']) == member_id:
+        return jsonify({'error': 'cannot_remove_admin', 'message': 'לא ניתן להסיר את מנהל המשפחה'}), 400
+
+    mongo.db.families.update_one({'_id': fam['_id']}, {'$pull': {'members': member_id}})
+    mongo.db.users.update_one({'_id': ObjectId(member_id)}, {'$set': {'family_id': None}})
+
+    fam = mongo.db.families.find_one({'_id': fam['_id']})
+    members = get_members(fam)
+    return jsonify({'family': family_public(fam, members)}), 200
+
+
 @family_bp.route('/dashboard', methods=['GET'])
 @require_auth
 def dashboard():

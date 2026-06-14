@@ -3,11 +3,24 @@ import Header from '../components/layout/Header'
 import BottomNav from '../components/layout/BottomNav'
 import { useAuth } from '../context/AuthContext'
 import { useFamily } from '../context/FamilyContext'
+import api from '../api/client'
 
 export default function Family() {
-  const { user }   = useAuth()
-  const { family } = useFamily()
-  const [copied, setCopied] = useState(false)
+  const { user }         = useAuth()
+  const { family, refreshFamily } = useFamily()
+  const [copied, setCopied]   = useState(false)
+  const [removing, setRemoving] = useState(null)
+
+  const removeMember = async (memberId) => {
+    if (!confirm('להסיר את החבר מהמשפחה?')) return
+    setRemoving(memberId)
+    try {
+      await api.delete(`/api/family/members/${memberId}`)
+      await refreshFamily()
+    } catch (e) {
+      alert(e.response?.data?.message || 'שגיאה')
+    } finally { setRemoving(null) }
+  }
 
   if (!family) return (
     <div className="min-h-screen bg-[#f0f4f8]">
@@ -81,7 +94,10 @@ export default function Family() {
           </div>
           <div className="divide-y divide-gray-50">
             {sorted.map((member, idx) => (
-              <MemberRow key={member.id} member={member} rank={idx + 1} isMe={member.id === user?.id} />
+              <MemberRow key={member.id} member={member} rank={idx + 1} isMe={member.id === user?.id}
+                canRemove={user?.role === 'admin' && member.id !== user?.id}
+                onRemove={() => removeMember(member.id)}
+                removing={removing === member.id} />
             ))}
           </div>
         </div>
@@ -92,7 +108,7 @@ export default function Family() {
   )
 }
 
-function MemberRow({ member, rank, isMe }) {
+function MemberRow({ member, rank, isMe, canRemove, onRemove, removing }) {
   const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' }
   const level = Math.floor((member.score || 0) / 100) + 1
 
@@ -121,9 +137,21 @@ function MemberRow({ member, rank, isMe }) {
         <p className="text-gray-400 text-xs">רמה {level}</p>
       </div>
 
-      <div className="text-right shrink-0">
-        <p className="font-extrabold text-gray-800 text-sm">{member.score || 0}</p>
-        <p className="text-gray-400 text-xs">נקודות</p>
+      <div className="text-right shrink-0 flex items-center gap-2">
+        <div>
+          <p className="font-extrabold text-gray-800 text-sm">{member.score || 0}</p>
+          <p className="text-gray-400 text-xs">נקודות</p>
+        </div>
+        {canRemove && (
+          <button onClick={onRemove} disabled={removing}
+            className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 active:scale-90 transition-all">
+            {removing
+              ? <span className="text-xs">...</span>
+              : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>}
+          </button>
+        )}
       </div>
     </div>
   )
