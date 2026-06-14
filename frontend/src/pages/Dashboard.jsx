@@ -147,7 +147,7 @@ export default function Dashboard() {
             </div>
             <div className="space-y-2">
               {tasks.map(t => (
-                <div key={t.id} className="bg-white dark:bg-gray-800 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+                <button key={t.id} onClick={() => navigate('/tasks')} className="w-full bg-white dark:bg-gray-800 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-95 transition-transform text-right">
                   <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-lg">📋</div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-gray-800 dark:text-white text-sm truncate">{t.title}</p>
@@ -156,7 +156,7 @@ export default function Dashboard() {
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PRIORITY_COLOR[t.priority]}`}>
                     {PRIORITY_LABEL[t.priority]}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           </section>
@@ -171,13 +171,13 @@ export default function Dashboard() {
             </div>
             <div className="space-y-2">
               {events.map(ev => (
-                <div key={ev.id} className="bg-white dark:bg-gray-800 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+                <button key={ev.id} onClick={() => navigate('/calendar')} className="w-full bg-white dark:bg-gray-800 rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 active:scale-95 transition-transform text-right">
                   <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center shrink-0 text-lg">{ev.emoji}</div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-gray-800 dark:text-white text-sm truncate">{ev.title}</p>
                     <p className="text-gray-400 text-xs">{formatDate(ev.date)}{ev.time ? ` · ${ev.time}` : ''}</p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           </section>
@@ -191,7 +191,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {family.members.map(m => (
-              <div key={m.id} className="flex flex-col items-center gap-1.5 shrink-0">
+              <button key={m.id} onClick={() => navigate('/family')} className="flex flex-col items-center gap-1.5 shrink-0 active:scale-95 transition-transform">
                 <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-200 dark:ring-blue-700 overflow-hidden flex items-center justify-center">
                   {m.avatar_url
                     ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" />
@@ -199,7 +199,7 @@ export default function Dashboard() {
                 </div>
                 <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">{m.name?.split(' ')[0]}</span>
                 <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">{m.score} ⭐</span>
-              </div>
+              </button>
             ))}
           </div>
         </section>
