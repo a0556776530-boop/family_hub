@@ -1,10 +1,18 @@
-import os
+import cloudinary
+import cloudinary.uploader
 from flask import Blueprint, request, jsonify, current_app
-from werkzeug.utils import secure_filename
 from bson import ObjectId
 from datetime import datetime, timezone
 from app import mongo
 from utils.jwt_utils import require_auth
+import os
+
+cloudinary.config(
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME', 'drigg05eh'),
+    api_key    = os.environ.get('CLOUDINARY_API_KEY', '365916188152834'),
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET', ''),
+    secure     = True
+)
 
 moments_bp = Blueprint('moments', __name__)
 
@@ -58,12 +66,13 @@ def upload_moment():
 
     caption = (request.form.get('caption') or '').strip()[:200]
 
-    moments_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'moments')
-    os.makedirs(moments_dir, exist_ok=True)
-
-    filename = secure_filename(f"{ObjectId()}_{file.filename}")
-    file.save(os.path.join(moments_dir, filename))
-    image_url = f"/static/uploads/moments/{filename}"
+    # העלאה ל-Cloudinary
+    result = cloudinary.uploader.upload(
+        file,
+        folder='family_hub/moments',
+        transformation=[{'width': 1200, 'crop': 'limit', 'quality': 'auto'}]
+    )
+    image_url = result['secure_url']
 
     doc = {
         'family_id':       ObjectId(family_id),
@@ -71,11 +80,12 @@ def upload_moment():
         'uploader_name':   user.get('name', ''),
         'uploader_avatar': user.get('avatar_url', ''),
         'image_url':       image_url,
+        'public_id':       result.get('public_id', ''),
         'caption':         caption,
         'created_at':      datetime.now(timezone.utc),
     }
-    result = mongo.db.moments.insert_one(doc)
-    doc['_id'] = result.inserted_id
+    res = mongo.db.moments.insert_one(doc)
+    doc['_id'] = res.inserted_id
     return jsonify({'moment': moment_public(doc)}), 201
 
 
@@ -98,12 +108,12 @@ def delete_moment(moment_id):
     if not (is_uploader or is_parent):
         return jsonify({'message': 'אין הרשאה'}), 403
 
-    filename = os.path.basename(moment.get('image_url', ''))
-    if filename:
-        path = os.path.join(current_app.config['UPLOAD_FOLDER'], 'moments', filename)
+    # מחיקה מ-Cloudinary
+    public_id = moment.get('public_id')
+    if public_id:
         try:
-            os.remove(path)
-        except OSError:
+            cloudinary.uploader.destroy(public_id)
+        except Exception:
             pass
 
     mongo.db.moments.delete_one({'_id': oid})

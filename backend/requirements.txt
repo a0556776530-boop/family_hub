@@ -9,3 +9,4 @@ gunicorn==22.0.0
 pymongo==4.10.1
 certifi
 dnspython
+cloudinary
