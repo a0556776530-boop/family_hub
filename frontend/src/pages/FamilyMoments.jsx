@@ -297,6 +297,7 @@ function Lightbox({ moments, index, currentUserId, onClose, onPrev, onNext, onDe
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 function UploadModal({ onClose, onUploaded }) {
   const fileRef   = useRef(null)
+  const cameraRef = useRef(null)
   const [file, setFile]       = useState(null)
   const [preview, setPreview] = useState(null)
   const [caption, setCaption] = useState('')
@@ -343,20 +344,27 @@ function UploadModal({ onClose, onUploaded }) {
         <form onSubmit={submit} className="space-y-4">
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
-          <button type="button" onClick={() => fileRef.current?.click()}
-            className={`w-full rounded-2xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center gap-2 transition-all overflow-hidden ${preview ? 'h-56 p-0 border-blue-500/50' : 'h-44 hover:border-blue-500/50'}`}>
-            {preview
-              ? <img src={preview} className="w-full h-full object-cover" alt="" />
-              : <>
-                  <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center">
-                    <svg className="w-7 h-7 text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M13.5 12h.008v.008H13.5V12zm-3 6.75h9a2.25 2.25 0 002.25-2.25V8.25a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 18.75z" />
-                    </svg>
-                  </div>
-                  <span className="text-white/50 text-sm">לחץ לבחירת תמונה</span>
-                </>}
-          </button>
+          {preview ? (
+            <button type="button" onClick={() => fileRef.current?.click()}
+              className="w-full rounded-2xl border-2 border-blue-500/50 h-56 overflow-hidden">
+              <img src={preview} className="w-full h-full object-cover" alt="" />
+            </button>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => cameraRef.current?.click()}
+                className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all">
+                <span className="text-3xl">📷</span>
+                <span className="text-white/60 text-sm font-medium">צלם עכשיו</span>
+              </button>
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="rounded-2xl border-2 border-dashed border-white/20 h-32 flex flex-col items-center justify-center gap-2 hover:border-blue-500/50 transition-all">
+                <span className="text-3xl">🖼️</span>
+                <span className="text-white/60 text-sm font-medium">מהגלריה</span>
+              </button>
+            </div>
+          )}
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
+          <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={onFile} />
 
           <input
             value={caption}
