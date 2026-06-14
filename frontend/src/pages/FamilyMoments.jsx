@@ -364,7 +364,7 @@ function UploadModal({ onClose, onUploaded }) {
             </div>
           )}
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
-          <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={onFile} />
+          <input ref={cameraRef} type="file" accept="image/*" capture="camera" className="hidden" onChange={onFile} />
 
           <input
             value={caption}
