@@ -8,9 +8,10 @@ export default function FamilySetup() {
   const { createFamily, joinFamily } = useFamily()
   const navigate = useNavigate()
 
-  const [tab, setTab]       = useState('create') // 'create' | 'join'
+  const pendingInvite = sessionStorage.getItem('pending_invite') || ''
+  const [tab, setTab]       = useState(pendingInvite ? 'join' : 'create')
   const [name, setName]     = useState('')
-  const [code, setCode]     = useState('')
+  const [code, setCode]     = useState(pendingInvite)
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -24,6 +25,7 @@ export default function FamilySetup() {
       } else {
         await joinFamily(code.trim().toUpperCase())
       }
+      sessionStorage.removeItem('pending_invite')
       await refreshUser()
       navigate('/', { replace: true })
     } catch (err) {

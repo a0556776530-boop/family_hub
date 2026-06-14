@@ -129,6 +129,34 @@ def remove_member(member_id):
     return jsonify({'family': family_public(fam, members)}), 200
 
 
+@family_bp.route('/leave', methods=['POST'])
+@require_auth
+def leave_family():
+    user = request.current_user
+    if not user.get('family_id'):
+        return jsonify({'error': 'not_in_family', 'message': 'אתה לא חלק ממשפחה'}), 400
+
+    fam = mongo.db.families.find_one({'_id': ObjectId(user['family_id'])})
+    if not fam:
+        mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'family_id': None}})
+        return jsonify({'message': 'יצאת מהמשפחה'}), 200
+
+    is_admin = str(fam['admin_id']) == str(user['_id'])
+    members = fam.get('members', [])
+
+    if is_admin and len(members) > 1:
+        return jsonify({'error': 'admin_cannot_leave', 'message': 'מנהל המשפחה לא יכול לצאת כל עוד יש חברים אחרים. הסר את שאר החברים תחילה.'}), 400
+
+    mongo.db.families.update_one({'_id': fam['_id']}, {'$pull': {'members': str(user['_id'])}})
+    mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'family_id': None, 'role': 'child'}})
+
+    remaining = [m for m in members if m != str(user['_id'])]
+    if not remaining:
+        mongo.db.families.delete_one({'_id': fam['_id']})
+
+    return jsonify({'message': 'יצאת מהמשפחה בהצלחה'}), 200
+
+
 @family_bp.route('/dashboard', methods=['GET'])
 @require_auth
 def dashboard():

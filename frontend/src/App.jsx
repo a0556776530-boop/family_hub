@@ -16,6 +16,7 @@ import Profile     from './pages/Profile'
 import Rewards       from './pages/Rewards'
 import FamilyBoard   from './pages/FamilyBoard'
 import FamilyMoments from './pages/FamilyMoments'
+import JoinViaLink   from './pages/JoinViaLink'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -58,6 +59,7 @@ function AppRoutes() {
       <Route path="/rewards"      element={<ProtectedRoute><Rewards /></ProtectedRoute>} />
       <Route path="/board"        element={<ProtectedRoute><FamilyBoard /></ProtectedRoute>} />
       <Route path="/moments"      element={<ProtectedRoute><FamilyMoments /></ProtectedRoute>} />
+      <Route path="/join/:code"   element={<JoinViaLink />} />
       <Route path="*"             element={<Navigate to="/" replace />} />
     </Routes>
   )

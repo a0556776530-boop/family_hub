@@ -8,8 +8,9 @@ import api from '../api/client'
 export default function Family() {
   const { user }         = useAuth()
   const { family, refreshFamily } = useFamily()
-  const [copied, setCopied]   = useState(false)
-  const [removing, setRemoving] = useState(null)
+  const [copied, setCopied]       = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [removing, setRemoving]   = useState(null)
 
   const removeMember = async (memberId) => {
     if (!confirm('להסיר את החבר מהמשפחה?')) return
@@ -36,6 +37,13 @@ export default function Family() {
     navigator.clipboard.writeText(family.invite_code)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const copyLink = () => {
+    const link = `${window.location.origin}/join/${family.invite_code}`
+    navigator.clipboard.writeText(link)
+    setCopiedLink(true)
+    setTimeout(() => setCopiedLink(false), 2000)
   }
 
   const sorted = [...(family.members || [])].sort((a, b) => (b.score || 0) - (a.score || 0))
@@ -84,6 +92,19 @@ export default function Family() {
               </button>
             </div>
             <p className="text-gray-400 text-xs mt-2 text-center">שתף את הקוד כדי להזמין בני משפחה</p>
+            <button onClick={copyLink}
+              className={`w-full mt-3 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${copiedLink ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
+              {copiedLink ? (
+                <>✓ קישור הועתק!</>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  שתף קישור הזמנה
+                </>
+              )}
+            </button>
           </div>
         )}
 

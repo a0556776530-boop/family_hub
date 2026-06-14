@@ -4,6 +4,7 @@ import Header from '../components/layout/Header'
 import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useFamily } from '../context/FamilyContext'
 
 const ROLE_CONFIG = {
   parent: { label: 'הורה', emoji: '👨‍👩‍👧', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
@@ -14,10 +15,14 @@ const ROLE_CONFIG = {
 
 export default function Profile() {
   const { user, logout, refreshUser } = useAuth()
+  const { family, refreshFamily } = useFamily()
   const navigate = useNavigate()
   const fileRef  = useRef(null)
   const [uploading, setUploading]   = useState(false)
   const [showLogout, setShowLogout] = useState(false)
+  const [showLeave, setShowLeave]   = useState(false)
+  const [leaving, setLeaving]       = useState(false)
+  const [leaveError, setLeaveError] = useState('')
   const [editName, setEditName]     = useState(false)
   const [nameVal, setNameVal]       = useState('')
   const [savingName, setSavingName] = useState(false)
@@ -60,6 +65,22 @@ export default function Profile() {
   const handleLogout = () => {
     logout()
     navigate('/splash', { replace: true })
+  }
+
+  const handleLeave = async () => {
+    setLeaving(true)
+    setLeaveError('')
+    try {
+      await api.post('/api/family/leave')
+      await refreshUser()
+      await refreshFamily()
+      setShowLeave(false)
+      navigate('/family', { replace: true })
+    } catch (e) {
+      setLeaveError(e.response?.data?.message || 'שגיאה, נסה שוב')
+    } finally {
+      setLeaving(false)
+    }
   }
 
   return (
@@ -178,6 +199,17 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* Leave family */}
+        {family && (
+          <button onClick={() => setShowLeave(true)}
+            className="w-full bg-white dark:bg-gray-800 text-orange-500 font-bold py-4 rounded-2xl shadow-sm border border-orange-100 dark:border-orange-900/40 active:scale-95 transition-transform flex items-center justify-center gap-2">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7" />
+            </svg>
+            עזוב משפחה
+          </button>
+        )}
+
         {/* Logout */}
         <button onClick={() => setShowLogout(true)}
           className="w-full bg-white dark:bg-gray-800 text-red-500 font-bold py-4 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/40 active:scale-95 transition-transform flex items-center justify-center gap-2">
@@ -188,6 +220,28 @@ export default function Profile() {
         </button>
 
       </main>
+
+      {showLeave && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => { setShowLeave(false); setLeaveError('') }} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-xs text-center shadow-xl">
+            <p className="text-4xl mb-3">🚪</p>
+            <h3 className="font-bold text-gray-800 dark:text-white text-lg mb-2">לעזוב את המשפחה?</h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">תוכל להצטרף למשפחה אחרת בעזרת קוד הזמנה חדש.</p>
+            {leaveError && <p className="text-red-500 text-sm mb-3 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2">{leaveError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => { setShowLeave(false); setLeaveError('') }}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold text-sm active:scale-95 transition-transform">
+                ביטול
+              </button>
+              <button onClick={handleLeave} disabled={leaving}
+                className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-bold text-sm active:scale-95 transition-transform disabled:opacity-60">
+                {leaving ? '...' : 'עזוב'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLogout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
