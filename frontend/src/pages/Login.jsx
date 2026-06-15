@@ -69,6 +69,12 @@ export default function Login() {
         >
           {loading ? 'מתחבר...' : 'התחברות'}
         </button>
+
+        <div className="text-center">
+          <Link to="/forgot-password" className="text-blue-200 text-sm hover:text-white transition-colors">
+            שכחתי סיסמה
+          </Link>
+        </div>
       </form>
 
       <p className="text-blue-200 text-sm mt-6">
