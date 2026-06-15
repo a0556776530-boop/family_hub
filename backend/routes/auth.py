@@ -1,9 +1,8 @@
 import os
 import random
-import smtplib
 import threading
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import urllib.request
+import json as _json
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 from bson import ObjectId
@@ -96,10 +95,11 @@ def update_profile():
 
 
 def send_reset_email(to_email, code, name):
-    mail_user = os.environ.get('MAIL_EMAIL', '')
-    mail_pass = os.environ.get('MAIL_PASSWORD', '')
-    if not mail_user or not mail_pass:
+    api_key = os.environ.get('RESEND_API_KEY', '')
+    if not api_key:
+        print('[MAIL ERROR] RESEND_API_KEY not set')
         return False
+
     html = f"""
     <div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#f8fafc;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
       <div style="text-align:center;font-size:48px;margin-bottom:16px">🏠</div>
@@ -116,18 +116,26 @@ def send_reset_email(to_email, code, name):
       <p style="color:#94a3b8;font-size:12px;text-align:center">Family Hub — האפליקציה של המשפחה</p>
     </div>
     """
+
     try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = 'קוד איפוס סיסמה — Family Hub'
-        msg['From']    = mail_user
-        msg['To']      = to_email
-        msg.attach(MIMEText(html, 'html', 'utf-8'))
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(mail_user, mail_pass)
-            server.sendmail(mail_user, to_email, msg.as_string())
+        payload = _json.dumps({
+            'from': 'Family Hub <onboarding@resend.dev>',
+            'to': [to_email],
+            'subject': 'קוד איפוס סיסמה — Family Hub',
+            'html': html,
+        }).encode('utf-8')
+
+        req = urllib.request.Request(
+            'https://api.resend.com/emails',
+            data=payload,
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            print(f'[MAIL] sent to {to_email}, status={resp.status}')
         return True
     except Exception as e:
         print(f'[MAIL ERROR] {e}')
