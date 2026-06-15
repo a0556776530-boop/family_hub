@@ -70,7 +70,8 @@ def upload_moment():
     result = cloudinary.uploader.upload(
         file,
         folder='family_hub/moments',
-        transformation=[{'width': 1200, 'crop': 'limit', 'quality': 'auto'}]
+        transformation=[{'width': 1200, 'crop': 'limit', 'quality': 'auto', 'fetch_format': 'auto'}],
+        format='jpg'
     )
     image_url = result['secure_url']
 
