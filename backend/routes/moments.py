@@ -16,21 +16,41 @@ cloudinary.config(
 
 moments_bp = Blueprint('moments', __name__)
 
-ALLOWED_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif'}
+IMAGE_EXT = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'heic', 'heif', 'bmp', 'tiff', 'avif'}
+VIDEO_EXT = {'mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v', '3gp'}
+ALLOWED_EXT = IMAGE_EXT | VIDEO_EXT
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXT
 
+def get_resource_type(filename):
+    ext = filename.rsplit('.', 1)[-1].lower()
+    return 'video' if ext in VIDEO_EXT else 'image'
+
+def optimized_url(url, resource_type='image'):
+    """Insert f_auto,q_auto into Cloudinary URL for best format per browser."""
+    if not url or 'cloudinary.com' not in url:
+        return url
+    marker = f'/{resource_type}/upload/'
+    if marker in url:
+        left, right = url.split(marker, 1)
+        # skip if already has transformations
+        if not right.startswith('f_auto'):
+            transform = 'f_auto,q_auto' if resource_type == 'image' else 'q_auto'
+            return f"{left}{marker}{transform}/{right}"
+    return url
+
 def moment_public(m):
     return {
-        'id':             str(m['_id']),
-        'family_id':      str(m.get('family_id', '')),
-        'uploader_id':    str(m.get('uploader_id', '')),
-        'uploader_name':  m.get('uploader_name', ''),
+        'id':              str(m['_id']),
+        'family_id':       str(m.get('family_id', '')),
+        'uploader_id':     str(m.get('uploader_id', '')),
+        'uploader_name':   m.get('uploader_name', ''),
         'uploader_avatar': m.get('uploader_avatar', ''),
-        'image_url':      m.get('image_url', ''),
-        'caption':        m.get('caption', ''),
-        'created_at':     m['created_at'].isoformat() if isinstance(m.get('created_at'), datetime) else str(m.get('created_at', '')),
+        'image_url':       m.get('image_url', ''),
+        'resource_type':   m.get('resource_type', 'image'),
+        'caption':         m.get('caption', ''),
+        'created_at':      m['created_at'].isoformat() if isinstance(m.get('created_at'), datetime) else str(m.get('created_at', '')),
     }
 
 
@@ -65,15 +85,25 @@ def upload_moment():
         return jsonify({'message': 'סוג קובץ לא נתמך'}), 400
 
     caption = (request.form.get('caption') or '').strip()[:200]
+    resource_type = get_resource_type(file.filename)
 
-    # העלאה ל-Cloudinary
-    result = cloudinary.uploader.upload(
-        file,
-        folder='family_hub/moments',
-        transformation=[{'width': 1200, 'crop': 'limit', 'quality': 'auto', 'fetch_format': 'auto'}],
-        format='jpg'
-    )
-    image_url = result['secure_url']
+    if resource_type == 'video':
+        result = cloudinary.uploader.upload(
+            file,
+            folder='family_hub/moments',
+            resource_type='video',
+            transformation=[{'quality': 'auto', 'width': 1280, 'crop': 'limit'}]
+        )
+    else:
+        result = cloudinary.uploader.upload(
+            file,
+            folder='family_hub/moments',
+            resource_type='image',
+            transformation=[{'width': 1200, 'crop': 'limit', 'quality': 'auto'}],
+            format='jpg'  # converts HEIC/PNG/BMP → JPEG as base
+        )
+
+    image_url = optimized_url(result['secure_url'], resource_type)
 
     doc = {
         'family_id':       ObjectId(family_id),
@@ -81,6 +111,7 @@ def upload_moment():
         'uploader_name':   user.get('name', ''),
         'uploader_avatar': user.get('avatar_url', ''),
         'image_url':       image_url,
+        'resource_type':   resource_type,
         'public_id':       result.get('public_id', ''),
         'caption':         caption,
         'created_at':      datetime.now(timezone.utc),
@@ -109,11 +140,13 @@ def delete_moment(moment_id):
     if not (is_uploader or is_parent):
         return jsonify({'message': 'אין הרשאה'}), 403
 
-    # מחיקה מ-Cloudinary
     public_id = moment.get('public_id')
     if public_id:
         try:
-            cloudinary.uploader.destroy(public_id)
+            cloudinary.uploader.destroy(
+                public_id,
+                resource_type=moment.get('resource_type', 'image')
+            )
         except Exception:
             pass
 

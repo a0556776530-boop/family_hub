@@ -156,27 +156,73 @@ export default function FamilyMoments() {
   )
 }
 
+// ── Media display helpers ─────────────────────────────────────────────────────
+function MediaThumb({ src, isVideo, alt, minHeight, onLoad }) {
+  const [errored, setErrored] = useState(false)
+
+  if (errored) {
+    return (
+      <div className="w-full flex items-center justify-center bg-gray-800 text-gray-500 text-2xl" style={{ minHeight }}>
+        {isVideo ? '🎬' : '🖼️'}
+      </div>
+    )
+  }
+
+  if (isVideo) {
+    return (
+      <video
+        src={src}
+        muted playsInline preload="metadata"
+        onLoadedMetadata={onLoad}
+        onError={() => setErrored(true)}
+        className="w-full object-cover"
+        style={{ minHeight }}
+      />
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onLoad={onLoad}
+      onError={() => setErrored(true)}
+      className="w-full object-cover"
+      style={{ minHeight }}
+    />
+  )
+}
+
 // ── Gallery Card ──────────────────────────────────────────────────────────────
 function GalleryCard({ moment, idx, currentUserId, onOpen, onDelete, deleting, isFeatured }) {
   const canDelete = moment.uploader_id === currentUserId
   const [loaded, setLoaded] = useState(false)
+  const isVideo = moment.resource_type === 'video'
 
   return (
     <div className={`break-inside-avoid mb-2 relative group rounded-xl overflow-hidden bg-gray-800 cursor-pointer ${isFeatured ? 'col-span-2' : ''}`}
       onClick={onOpen}>
       {/* Skeleton */}
       {!loaded && <div className="w-full bg-gray-800 animate-pulse" style={{ height: isFeatured ? 220 : 140 }} />}
-      <img
-        src={imgSrc(moment.image_url)}
-        alt={moment.caption || ''}
-        loading="lazy"
-        onLoad={() => setLoaded(true)}
-        className={`w-full object-cover transition-all duration-300 group-active:scale-95 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}
-        style={{ minHeight: isFeatured ? 200 : 120 }}
-      />
+      <div className={`transition-all duration-300 ${loaded ? 'opacity-100' : 'opacity-0 absolute inset-0'}`}>
+        <MediaThumb
+          src={imgSrc(moment.image_url)}
+          isVideo={isVideo}
+          alt={moment.caption || ''}
+          minHeight={isFeatured ? 200 : 120}
+          onLoad={() => setLoaded(true)}
+        />
+      </div>
+      {/* Video badge */}
+      {isVideo && loaded && (
+        <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+          ▶ וידאו
+        </div>
+      )}
       {/* Overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-      {isFeatured && (
+      {isFeatured && !isVideo && (
         <div className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
           ✨ חדש
         </div>
@@ -253,19 +299,29 @@ function Lightbox({ moments, index, currentUserId, onClose, onPrev, onNext, onDe
         ) : <div className="w-10" />}
       </div>
 
-      {/* Image */}
+      {/* Media */}
       <div className="flex-1 flex items-center justify-center px-4 relative">
         <button onClick={onPrev} className="absolute right-2 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-90 transition-transform">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
         </button>
-        <img
-          key={m.id}
-          src={imgSrc(m.image_url)}
-          alt={m.caption || ''}
-          className="max-h-[65vh] max-w-full object-contain rounded-2xl shadow-2xl"
-        />
+        {m.resource_type === 'video' ? (
+          <video
+            key={m.id}
+            src={imgSrc(m.image_url)}
+            controls
+            playsInline
+            className="max-h-[65vh] max-w-full rounded-2xl shadow-2xl"
+          />
+        ) : (
+          <img
+            key={m.id}
+            src={imgSrc(m.image_url)}
+            alt={m.caption || ''}
+            className="max-h-[65vh] max-w-full object-contain rounded-2xl shadow-2xl"
+          />
+        )}
         <button onClick={onNext} className="absolute left-2 z-10 w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white active:scale-90 transition-transform">
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -429,8 +485,12 @@ function UploadModal({ onClose, onUploaded }) {
             {error && <p className="text-red-400 text-sm text-center">{error}</p>}
 
             {preview ? (
-              <div className="relative w-full rounded-2xl h-56 overflow-hidden">
-                <img src={preview} className="w-full h-full object-cover" alt="" />
+              <div className="relative w-full rounded-2xl h-56 overflow-hidden bg-black">
+                {file?.type?.startsWith('video') ? (
+                  <video src={preview} controls playsInline className="w-full h-full object-contain" />
+                ) : (
+                  <img src={preview} className="w-full h-full object-cover" alt="" />
+                )}
                 <button type="button" onClick={() => { setFile(null); setPreview(null) }}
                   className="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center text-white">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
