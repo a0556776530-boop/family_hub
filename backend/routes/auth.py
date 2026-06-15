@@ -121,7 +121,10 @@ def send_reset_email(to_email, code, name):
         msg['From']    = mail_user
         msg['To']      = to_email
         msg.attach(MIMEText(html, 'html', 'utf-8'))
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             server.login(mail_user, mail_pass)
             server.sendmail(mail_user, to_email, msg.as_string())
         return True
