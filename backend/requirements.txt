@@ -6,7 +6,8 @@ PyJWT==2.8.0
 python-dotenv==1.0.1
 Pillow
 gunicorn==22.0.0
-eventlet==0.40.0
+gevent==24.11.1
+gevent-websocket==0.10.1
 pymongo==4.10.1
 certifi
 dnspython

@@ -26,7 +26,7 @@ def create_app():
 
     bcrypt.init_app(app)
     CORS(app, origins='*', supports_credentials=False)
-    socketio.init_app(app, cors_allowed_origins='*', async_mode='eventlet')
+    socketio.init_app(app, cors_allowed_origins='*', async_mode='gevent')
 
     from routes.auth     import auth_bp
     from routes.family   import family_bp
