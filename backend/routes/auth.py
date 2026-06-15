@@ -1,6 +1,7 @@
 import os
 import random
 import smtplib
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from flask import Blueprint, request, jsonify, current_app
@@ -121,14 +122,15 @@ def send_reset_email(to_email, code, name):
         msg['From']    = mail_user
         msg['To']      = to_email
         msg.attach(MIMEText(html, 'html', 'utf-8'))
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=15) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(mail_user, mail_pass)
             server.sendmail(mail_user, to_email, msg.as_string())
         return True
-    except Exception:
+    except Exception as e:
+        print(f'[MAIL ERROR] {e}')
         return False
 
 
@@ -155,9 +157,8 @@ def forgot_password():
     })
     mongo.db.password_resets.create_index('expires_at', expireAfterSeconds=0)
 
-    sent = send_reset_email(email, code, user.get('name', ''))
-    if not sent:
-        return jsonify({'message': 'שגיאה בשליחת מייל. בדוק הגדרות MAIL_EMAIL ו-MAIL_PASSWORD'}), 500
+    name = user.get('name', '')
+    threading.Thread(target=send_reset_email, args=(email, code, name), daemon=True).start()
 
     return jsonify({'message': 'אם האימייל קיים במערכת — נשלח קוד'}), 200
 
