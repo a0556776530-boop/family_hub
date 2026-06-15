@@ -1,12 +1,8 @@
 import os
-import random
-import threading
-import urllib.request
-import json as _json
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 from bson import ObjectId
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from app import mongo, bcrypt
 from utils.jwt_utils import generate_token, require_auth
 from utils.helpers import user_public
@@ -94,110 +90,25 @@ def update_profile():
     return jsonify({'user': user_public(updated)}), 200
 
 
-def send_reset_email(to_email, code, name):
-    api_key = os.environ.get('RESEND_API_KEY', '')
-    if not api_key:
-        print('[MAIL ERROR] RESEND_API_KEY not set')
-        return False
+@auth_bp.route('/change-password', methods=['PATCH'])
+@require_auth
+def change_password():
+    user = request.current_user
+    data = request.get_json() or {}
+    current  = data.get('current_password') or ''
+    new_pass = data.get('new_password') or ''
 
-    html = f"""
-    <div dir="rtl" style="font-family:Arial,sans-serif;max-width:480px;margin:auto;background:#f8fafc;border-radius:16px;padding:32px;border:1px solid #e2e8f0">
-      <div style="text-align:center;font-size:48px;margin-bottom:16px">🏠</div>
-      <h2 style="color:#1e3a5f;text-align:center;margin:0 0 8px">Family Hub</h2>
-      <p style="color:#64748b;text-align:center;margin:0 0 32px">איפוס סיסמה</p>
-      <p style="color:#334155">שלום {name},</p>
-      <p style="color:#334155">קיבלנו בקשה לאיפוס הסיסמה שלך. הקוד שלך הוא:</p>
-      <div style="background:#1d4ed8;border-radius:12px;padding:24px;text-align:center;margin:24px 0">
-        <span style="color:white;font-size:40px;font-weight:bold;letter-spacing:12px">{code}</span>
-      </div>
-      <p style="color:#64748b;font-size:14px">הקוד תקף ל-15 דקות בלבד.</p>
-      <p style="color:#64748b;font-size:14px">אם לא ביקשת איפוס סיסמה — אפשר להתעלם מהמייל הזה.</p>
-      <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
-      <p style="color:#94a3b8;font-size:12px;text-align:center">Family Hub — האפליקציה של המשפחה</p>
-    </div>
-    """
-
-    try:
-        payload = _json.dumps({
-            'from': 'Family Hub <onboarding@resend.dev>',
-            'to': [to_email],
-            'subject': 'קוד איפוס סיסמה — Family Hub',
-            'html': html,
-        }).encode('utf-8')
-
-        req = urllib.request.Request(
-            'https://api.resend.com/emails',
-            data=payload,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-            },
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            print(f'[MAIL] sent to {to_email}, status={resp.status}')
-        return True
-    except Exception as e:
-        print(f'[MAIL ERROR] {e}')
-        return False
-
-
-@auth_bp.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    data  = request.get_json() or {}
-    email = (data.get('email') or '').strip().lower()
-    if not email:
-        return jsonify({'message': 'נדרש אימייל'}), 400
-
-    user = mongo.db.users.find_one({'email': email})
-    if not user:
-        # don't reveal if email exists
-        return jsonify({'message': 'אם האימייל קיים במערכת — נשלח קוד'}), 200
-
-    code    = str(random.randint(100000, 999999))
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    mongo.db.password_resets.delete_many({'email': email})
-    mongo.db.password_resets.insert_one({
-        'email':      email,
-        'code_hash':  bcrypt.generate_password_hash(code).decode('utf-8'),
-        'expires_at': expires,
-    })
-    mongo.db.password_resets.create_index('expires_at', expireAfterSeconds=0)
-
-    name = user.get('name', '')
-    threading.Thread(target=send_reset_email, args=(email, code, name), daemon=True).start()
-
-    return jsonify({'message': 'אם האימייל קיים במערכת — נשלח קוד'}), 200
-
-
-@auth_bp.route('/reset-password', methods=['POST'])
-def reset_password():
-    data     = request.get_json() or {}
-    email    = (data.get('email') or '').strip().lower()
-    code     = (data.get('code') or '').strip()
-    password = data.get('password') or ''
-
-    if not email or not code or not password:
+    if not current or not new_pass:
         return jsonify({'message': 'חסרים פרטים'}), 400
-    if len(password) < 6:
+    if len(new_pass) < 6:
         return jsonify({'message': 'הסיסמה חייבת להכיל לפחות 6 תווים'}), 400
+    if not bcrypt.check_password_hash(user['password'], current):
+        return jsonify({'message': 'הסיסמה הנוכחית שגויה'}), 400
 
-    record = mongo.db.password_resets.find_one({'email': email})
-    if not record:
-        return jsonify({'message': 'קוד לא תקין או פג תוקף'}), 400
-
-    if record['expires_at'].replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
-        mongo.db.password_resets.delete_one({'_id': record['_id']})
-        return jsonify({'message': 'הקוד פג תוקף — בקש קוד חדש'}), 400
-
-    if not bcrypt.check_password_hash(record['code_hash'], code):
-        return jsonify({'message': 'קוד שגוי'}), 400
-
-    new_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-    mongo.db.users.update_one({'email': email}, {'$set': {'password': new_hash}})
-    mongo.db.password_resets.delete_one({'_id': record['_id']})
-
+    mongo.db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': {'password': bcrypt.generate_password_hash(new_pass).decode('utf-8')}}
+    )
     return jsonify({'message': 'הסיסמה עודכנה בהצלחה'}), 200
 
 

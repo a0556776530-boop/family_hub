@@ -26,6 +26,11 @@ export default function Profile() {
   const [editName, setEditName]     = useState(false)
   const [nameVal, setNameVal]       = useState('')
   const [savingName, setSavingName] = useState(false)
+  const [showChangePw, setShowChangePw] = useState(false)
+  const [pwForm, setPwForm]             = useState({ current: '', next: '', confirm: '' })
+  const [pwLoading, setPwLoading]       = useState(false)
+  const [pwError, setPwError]           = useState('')
+  const [pwSuccess, setPwSuccess]       = useState(false)
 
   const openEditName = () => { setNameVal(user?.name || ''); setEditName(true) }
   const saveName = async () => {
@@ -65,6 +70,21 @@ export default function Profile() {
   const handleLogout = () => {
     logout()
     navigate('/splash', { replace: true })
+  }
+
+  const openChangePw = () => { setPwForm({ current: '', next: '', confirm: '' }); setPwError(''); setPwSuccess(false); setShowChangePw(true) }
+  const handleChangePw = async () => {
+    if (!pwForm.current || !pwForm.next) return setPwError('מלא את כל השדות')
+    if (pwForm.next.length < 6) return setPwError('סיסמה חדשה חייבת להכיל לפחות 6 תווים')
+    if (pwForm.next !== pwForm.confirm) return setPwError('הסיסמאות אינן תואמות')
+    setPwLoading(true); setPwError('')
+    try {
+      await api.patch('/api/auth/change-password', { current_password: pwForm.current, new_password: pwForm.next })
+      setPwSuccess(true)
+      setTimeout(() => setShowChangePw(false), 1500)
+    } catch (e) {
+      setPwError(e.response?.data?.message || 'שגיאה, נסה שוב')
+    } finally { setPwLoading(false) }
   }
 
   const handleLeave = async () => {
@@ -199,6 +219,15 @@ export default function Profile() {
           </div>
         </div>
 
+        {/* Change password */}
+        <button onClick={openChangePw}
+          className="w-full bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 font-bold py-4 rounded-2xl shadow-sm border border-blue-100 dark:border-blue-900/40 active:scale-95 transition-transform flex items-center justify-center gap-2">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          שנה סיסמה
+        </button>
+
         {/* Leave family */}
         {family && (
           <button onClick={() => setShowLeave(true)}
@@ -237,6 +266,38 @@ export default function Profile() {
               <button onClick={handleLeave} disabled={leaving}
                 className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-bold text-sm active:scale-95 transition-transform disabled:opacity-60">
                 {leaving ? '...' : 'עזוב'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangePw && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center px-4 pb-6 sm:pb-0">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setShowChangePw(false)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="font-bold text-gray-800 dark:text-white text-lg mb-4 text-center">שנה סיסמה 🔑</h3>
+            <div className="space-y-3">
+              <input type="password" placeholder="סיסמה נוכחית" value={pwForm.current}
+                onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 text-right" />
+              <input type="password" placeholder="סיסמה חדשה (לפחות 6 תווים)" value={pwForm.next}
+                onChange={e => setPwForm(f => ({ ...f, next: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 text-right" />
+              <input type="password" placeholder="אשר סיסמה חדשה" value={pwForm.confirm}
+                onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
+                className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 text-right" />
+            </div>
+            {pwError && <p className="text-red-500 text-sm mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 text-center">{pwError}</p>}
+            {pwSuccess && <p className="text-green-600 text-sm mt-3 bg-green-50 dark:bg-green-900/20 rounded-xl px-3 py-2 text-center">✅ הסיסמה עודכנה בהצלחה!</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setShowChangePw(false)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold text-sm active:scale-95 transition-transform">
+                ביטול
+              </button>
+              <button onClick={handleChangePw} disabled={pwLoading || pwSuccess}
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:scale-95 transition-transform disabled:opacity-60">
+                {pwLoading ? '...' : 'שמור'}
               </button>
             </div>
           </div>

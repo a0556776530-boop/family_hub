@@ -10,10 +10,28 @@ export default function Family() {
   const { family, refreshFamily } = useFamily()
   const [copied, setCopied]         = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
-  const [removing, setRemoving]     = useState(null)
-  const [editName, setEditName]     = useState(false)
+  const [removing, setRemoving]         = useState(null)
+  const [resetTarget, setResetTarget]   = useState(null)
+  const [resetPw, setResetPw]           = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError]     = useState('')
+  const [resetSuccess, setResetSuccess] = useState(false)
+  const [editName, setEditName]         = useState(false)
   const [nameVal, setNameVal]       = useState('')
   const [savingName, setSavingName] = useState(false)
+
+  const openReset = (member) => { setResetTarget(member); setResetPw(''); setResetError(''); setResetSuccess(false) }
+  const handleReset = async () => {
+    if (resetPw.length < 6) return setResetError('הסיסמה חייבת להכיל לפחות 6 תווים')
+    setResetLoading(true); setResetError('')
+    try {
+      await api.post(`/api/family/members/${resetTarget.id}/reset-password`, { new_password: resetPw })
+      setResetSuccess(true)
+      setTimeout(() => setResetTarget(null), 1500)
+    } catch (e) {
+      setResetError(e.response?.data?.message || 'שגיאה, נסה שוב')
+    } finally { setResetLoading(false) }
+  }
 
   const removeMember = async (memberId) => {
     if (!confirm('להסיר את החבר מהמשפחה?')) return
@@ -156,18 +174,46 @@ export default function Family() {
               <MemberRow key={member.id} member={member} rank={idx + 1} isMe={member.id === user?.id}
                 canRemove={(user?.role === 'admin' || user?.role === 'parent') && member.id !== user?.id}
                 onRemove={() => removeMember(member.id)}
-                removing={removing === member.id} />
+                removing={removing === member.id}
+                canResetPw={(user?.role === 'admin' || user?.role === 'parent') && member.id !== user?.id}
+                onResetPw={() => openReset(member)} />
             ))}
           </div>
         </div>
 
       </main>
+
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center px-4 pb-6 sm:pb-0">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={() => setResetTarget(null)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h3 className="font-bold text-gray-800 dark:text-white text-lg mb-1 text-center">איפוס סיסמה 🔑</h3>
+            <p className="text-gray-400 text-sm mb-4 text-center">קביעת סיסמה חדשה עבור <strong>{resetTarget.name}</strong></p>
+            <input type="password" placeholder="סיסמה חדשה (לפחות 6 תווים)" value={resetPw}
+              onChange={e => setResetPw(e.target.value)}
+              className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-sm text-gray-800 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 text-right" />
+            {resetError && <p className="text-red-500 text-sm mt-3 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-2 text-center">{resetError}</p>}
+            {resetSuccess && <p className="text-green-600 text-sm mt-3 bg-green-50 dark:bg-green-900/20 rounded-xl px-3 py-2 text-center">✅ הסיסמה אופסה בהצלחה!</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setResetTarget(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-semibold text-sm active:scale-95 transition-transform">
+                ביטול
+              </button>
+              <button onClick={handleReset} disabled={resetLoading || resetSuccess}
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:scale-95 transition-transform disabled:opacity-60">
+                {resetLoading ? '...' : 'אפס סיסמה'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BottomNav />
     </div>
   )
 }
 
-function MemberRow({ member, rank, isMe, canRemove, onRemove, removing }) {
+function MemberRow({ member, rank, isMe, canRemove, onRemove, removing, canResetPw, onResetPw }) {
   const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' }
   const level = Math.floor((member.score || 0) / 100) + 1
 
@@ -201,6 +247,15 @@ function MemberRow({ member, rank, isMe, canRemove, onRemove, removing }) {
           <p className="font-extrabold text-gray-800 text-sm">{member.score || 0}</p>
           <p className="text-gray-400 text-xs">נקודות</p>
         </div>
+        {canResetPw && (
+          <button onClick={onResetPw}
+            className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 hover:bg-blue-100 active:scale-90 transition-all"
+            title="איפוס סיסמה">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+          </button>
+        )}
         {canRemove && (
           <button onClick={onRemove} disabled={removing}
             className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-400 hover:bg-red-100 active:scale-90 transition-all">

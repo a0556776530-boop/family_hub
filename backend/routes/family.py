@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from bson import ObjectId
 from datetime import datetime, timezone
-from app import mongo
+from app import mongo, bcrypt
 from utils.jwt_utils import require_auth
 from utils.helpers import generate_invite_code, user_public
 
@@ -127,6 +127,29 @@ def remove_member(member_id):
     fam = mongo.db.families.find_one({'_id': fam['_id']})
     members = get_members(fam)
     return jsonify({'family': family_public(fam, members)}), 200
+
+
+@family_bp.route('/members/<member_id>/reset-password', methods=['POST'])
+@require_auth
+def reset_member_password(member_id):
+    user = request.current_user
+    if user.get('role') not in ('admin', 'parent'):
+        return jsonify({'error': 'forbidden', 'message': 'רק הורה יכול לאפס סיסמה'}), 403
+
+    member = mongo.db.users.find_one({'_id': ObjectId(member_id), 'family_id': user.get('family_id')})
+    if not member:
+        return jsonify({'error': 'not_found', 'message': 'חבר לא נמצא'}), 404
+
+    data = request.get_json() or {}
+    new_pass = data.get('new_password') or ''
+    if len(new_pass) < 6:
+        return jsonify({'message': 'הסיסמה חייבת להכיל לפחות 6 תווים'}), 400
+
+    mongo.db.users.update_one(
+        {'_id': ObjectId(member_id)},
+        {'$set': {'password': bcrypt.generate_password_hash(new_pass).decode('utf-8')}}
+    )
+    return jsonify({'message': f'סיסמת {member.get("name", "")} אופסה בהצלחה'}), 200
 
 
 @family_bp.route('/rename', methods=['PATCH'])
