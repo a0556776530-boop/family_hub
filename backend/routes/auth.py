@@ -40,6 +40,8 @@ def register():
     raw_role = (data.get('role') or 'child').lower()
     role = raw_role if raw_role in ('parent', 'child') else 'child'
 
+    secret_answer = (data.get('secret_answer') or '').strip().lower()
+
     result = mongo.db.users.insert_one({
         'name':           name,
         'email':          email,
@@ -49,6 +51,7 @@ def register():
         'role':           role,
         'score':          0,
         'wallet_balance': 0,
+        'secret_answer':  secret_answer,
         'created_at':     datetime.now(timezone.utc),
     })
 
@@ -112,23 +115,45 @@ def change_password():
     return jsonify({'message': 'הסיסמה עודכנה בהצלחה'}), 200
 
 
-@auth_bp.route('/emergency-reset', methods=['POST'])
-def emergency_reset():
+@auth_bp.route('/set-secret-answer', methods=['PATCH'])
+@require_auth
+def set_secret_answer():
+    user = request.current_user
     data = request.get_json() or {}
-    if data.get('key') != 'fh-admin-2024':
-        return jsonify({'error': 'forbidden'}), 403
+    answer = (data.get('secret_answer') or '').strip().lower()
+    if not answer:
+        return jsonify({'message': 'חסרת תשובה'}), 400
+    mongo.db.users.update_one({'_id': user['_id']}, {'$set': {'secret_answer': answer}})
+    return jsonify({'message': 'שאלת הביטחון נשמרה'}), 200
+
+
+@auth_bp.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    data     = request.get_json() or {}
     email    = (data.get('email') or '').strip().lower()
     new_pass = data.get('new_password') or ''
-    if not email or not new_pass:
-        return jsonify({'error': 'missing_fields'}), 400
+    answer   = (data.get('secret_answer') or '').strip().lower()
+
+    if not email or not new_pass or not answer:
+        return jsonify({'message': 'חסרים פרטים'}), 400
+    if len(new_pass) < 6:
+        return jsonify({'message': 'הסיסמה חייבת להכיל לפחות 6 תווים'}), 400
+
     user = mongo.db.users.find_one({'email': email})
     if not user:
-        return jsonify({'error': 'not_found'}), 404
+        return jsonify({'message': 'אימייל לא נמצא במערכת'}), 404
+
+    stored = (user.get('secret_answer') or '').strip().lower()
+    if not stored:
+        return jsonify({'message': 'לא הגדרת שאלת אבטחה. בקש מהורה לאפס את סיסמתך.'}), 400
+    if answer != stored:
+        return jsonify({'message': 'תשובת הביטחון שגויה'}), 400
+
     mongo.db.users.update_one(
         {'_id': user['_id']},
         {'$set': {'password': bcrypt.generate_password_hash(new_pass).decode('utf-8')}}
     )
-    return jsonify({'message': 'סיסמה אופסה'}), 200
+    return jsonify({'message': 'הסיסמה שונתה בהצלחה'}), 200
 
 
 @auth_bp.route('/avatar', methods=['POST'])

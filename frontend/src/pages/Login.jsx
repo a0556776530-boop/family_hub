@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
@@ -73,7 +74,13 @@ export default function Login() {
 
       </form>
 
-      <p className="text-blue-200 text-sm mt-6">
+      <div className="text-center mt-4">
+        <Link to="/forgot-password" className="text-blue-200 text-sm hover:text-white transition-colors">
+          שכחתי סיסמה 🔑
+        </Link>
+      </div>
+
+      <p className="text-blue-200 text-sm mt-4">
         אין לך חשבון?{' '}
         <Link to="/register" className="text-white font-bold underline underline-offset-2">
           הרשמה

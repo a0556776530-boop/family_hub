@@ -9,7 +9,13 @@ export default function Register() {
   const navigate     = useNavigate()
   const fileRef      = useRef(null)
 
-  const [form, setForm]       = useState({ name: '', email: '', password: '', role: 'child' })
+  const QUESTIONS = [
+    'מה שם חיית המחמד הראשונה שלך?',
+    'באיזה עיר גדלת?',
+    'מה שם בית הספר היסודי שלך?',
+    'מה התחביב האהוב עליך?',
+  ]
+  const [form, setForm]       = useState({ name: '', email: '', password: '', role: 'child', secret_question: '', secret_answer: '' })
   const [avatar, setAvatar]   = useState(null)
   const [preview, setPreview] = useState(null)
   const [error, setError]     = useState('')
@@ -35,6 +41,7 @@ export default function Register() {
       fd.append('email', form.email)
       fd.append('password', form.password)
       fd.append('role', form.role)
+      fd.append('secret_answer', form.secret_answer)
       if (avatar) fd.append('avatar', avatar)
       const user = await register(fd)
       navigate(user.family_id ? '/' : '/family-setup', { replace: true })
@@ -112,6 +119,23 @@ export default function Register() {
           <input type="password" required value={form.password} onChange={e => set('password', e.target.value)}
             placeholder="לפחות 6 תווים" className={INPUT_CLS} />
         </div>
+
+        <div>
+          <label className="block text-blue-100 text-sm font-medium mb-1.5">שאלת ביטחון (לשחזור סיסמה)</label>
+          <select value={form.secret_question} onChange={e => set('secret_question', e.target.value)}
+            className={INPUT_CLS + ' bg-blue-700/50'}>
+            <option value="">בחר שאלה...</option>
+            {QUESTIONS.map(q => <option key={q} value={q}>{q}</option>)}
+          </select>
+        </div>
+
+        {form.secret_question && (
+          <div>
+            <label className="block text-blue-100 text-sm font-medium mb-1.5">התשובה שלך</label>
+            <input type="text" value={form.secret_answer} onChange={e => set('secret_answer', e.target.value)}
+              placeholder="תשובה סודית..." className={INPUT_CLS} />
+          </div>
+        )}
 
         <button type="submit" disabled={loading}
           className="w-full bg-white text-blue-700 font-bold py-3.5 rounded-2xl text-base shadow-lg active:scale-95 transition-transform disabled:opacity-60 mt-2">
