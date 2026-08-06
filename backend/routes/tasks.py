@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from app import mongo, socketio
 from utils.jwt_utils import require_auth
 from utils.helpers import serialize_doc
+from threading import Thread
 
 tasks_bp = Blueprint('tasks', __name__)
 
@@ -75,6 +76,10 @@ def create_task():
     task = mongo.db.tasks.find_one({'_id': result.inserted_id})
     pub  = task_public(task)
     socketio.emit('task_created', pub, room=user['family_id'])
+    def _push():
+        from routes.notifications import send_push_to_family
+        send_push_to_family(user['family_id'], '📋 משימה חדשה', f'{title} נוספה על ידי {user.get("name","")}', '/tasks')
+    Thread(target=_push, daemon=True).start()
     return jsonify({'task': pub}), 201
 
 
@@ -114,6 +119,10 @@ def complete_task(task_id):
         task_updated = mongo.db.tasks.find_one({'_id': ObjectId(task_id)})
         pub = task_public(task_updated)
         socketio.emit('task_updated', pub, room=user['family_id'])
+        def _push():
+            from routes.notifications import send_push_to_family
+            send_push_to_family(user['family_id'], '⏳ משימה ממתינה לאישור', f'{user.get("name","")} השלים: {task["title"]}', '/tasks')
+        Thread(target=_push, daemon=True).start()
         return jsonify({'message': 'נשלח לאישור הורה! ⏳', 'awaiting': True}), 200
 
 
@@ -157,6 +166,11 @@ def approve_task(task_id):
         'new_balance':   completer_user.get('wallet_balance', 0) if completer_user else 0,
     }, room=user['family_id'])
 
+    def _push():
+        from routes.notifications import send_push_to_user, send_push_to_family
+        if completer_id:
+            send_push_to_user(completer_id, '✅ משימה אושרה!', f'+{xp_value} XP על: {task["title"]}', '/tasks')
+    Thread(target=_push, daemon=True).start()
     return jsonify({'message': f'אושר! +{xp_value} XP', 'xp_earned': xp_value}), 200
 
 

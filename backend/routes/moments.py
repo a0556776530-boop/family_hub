@@ -5,6 +5,7 @@ from bson import ObjectId
 from datetime import datetime, timezone
 from app import mongo
 from utils.jwt_utils import require_auth
+from threading import Thread
 import os
 
 cloudinary.config(
@@ -118,6 +119,12 @@ def upload_moment():
     }
     res = mongo.db.moments.insert_one(doc)
     doc['_id'] = res.inserted_id
+    def _push():
+        from routes.notifications import send_push_to_family
+        label = 'וידאו' if resource_type == 'video' else 'תמונה'
+        text  = f'{caption} — {user.get("name","")}' if caption else f'{user.get("name","")} שיתף {label} חדש'
+        send_push_to_family(user.get('family_id',''), f'📸 {label} חדש ברגעים', text, '/moments')
+    Thread(target=_push, daemon=True).start()
     return jsonify({'moment': moment_public(doc)}), 201
 
 

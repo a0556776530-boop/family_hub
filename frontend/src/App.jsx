@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { FamilyProvider } from './context/FamilyContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { usePushNotifications } from './hooks/usePushNotifications'
 
 import Splash      from './pages/Splash'
 import Login       from './pages/Login'
@@ -44,6 +45,7 @@ function Loader() {
 
 function AppRoutes() {
   const { user, loading } = useAuth()
+  usePushNotifications(user)
   if (loading) return <Loader />
   return (
     <Routes>

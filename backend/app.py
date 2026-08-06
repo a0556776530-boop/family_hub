@@ -28,23 +28,25 @@ def create_app():
     CORS(app, origins='*', supports_credentials=False)
     socketio.init_app(app, cors_allowed_origins='*', async_mode='threading')
 
-    from routes.auth     import auth_bp
-    from routes.family   import family_bp
-    from routes.tasks    import tasks_bp
-    from routes.events   import events_bp
-    from routes.chat     import chat_bp
-    from routes.shopping import shopping_bp
-    from routes.rewards  import rewards_bp
-    from routes.moments  import moments_bp
+    from routes.auth          import auth_bp
+    from routes.family        import family_bp
+    from routes.tasks         import tasks_bp
+    from routes.events        import events_bp
+    from routes.chat          import chat_bp
+    from routes.shopping      import shopping_bp
+    from routes.rewards       import rewards_bp
+    from routes.moments       import moments_bp
+    from routes.notifications import notifications_bp
 
-    app.register_blueprint(auth_bp,     url_prefix='/api/auth')
-    app.register_blueprint(family_bp,   url_prefix='/api/family')
-    app.register_blueprint(tasks_bp,    url_prefix='/api/tasks')
-    app.register_blueprint(events_bp,   url_prefix='/api/events')
-    app.register_blueprint(chat_bp,     url_prefix='/api/chat')
-    app.register_blueprint(shopping_bp, url_prefix='/api/shopping')
-    app.register_blueprint(rewards_bp,  url_prefix='/api/rewards')
-    app.register_blueprint(moments_bp,  url_prefix='/api/moments')
+    app.register_blueprint(auth_bp,          url_prefix='/api/auth')
+    app.register_blueprint(family_bp,        url_prefix='/api/family')
+    app.register_blueprint(tasks_bp,         url_prefix='/api/tasks')
+    app.register_blueprint(events_bp,        url_prefix='/api/events')
+    app.register_blueprint(chat_bp,          url_prefix='/api/chat')
+    app.register_blueprint(shopping_bp,      url_prefix='/api/shopping')
+    app.register_blueprint(rewards_bp,       url_prefix='/api/rewards')
+    app.register_blueprint(moments_bp,       url_prefix='/api/moments')
+    app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
 
     import os
     from flask import send_from_directory
