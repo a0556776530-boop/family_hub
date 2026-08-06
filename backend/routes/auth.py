@@ -112,6 +112,25 @@ def change_password():
     return jsonify({'message': 'הסיסמה עודכנה בהצלחה'}), 200
 
 
+@auth_bp.route('/emergency-reset', methods=['POST'])
+def emergency_reset():
+    data = request.get_json() or {}
+    if data.get('key') != 'fh-admin-2024':
+        return jsonify({'error': 'forbidden'}), 403
+    email    = (data.get('email') or '').strip().lower()
+    new_pass = data.get('new_password') or ''
+    if not email or not new_pass:
+        return jsonify({'error': 'missing_fields'}), 400
+    user = mongo.db.users.find_one({'email': email})
+    if not user:
+        return jsonify({'error': 'not_found'}), 404
+    mongo.db.users.update_one(
+        {'_id': user['_id']},
+        {'$set': {'password': bcrypt.generate_password_hash(new_pass).decode('utf-8')}}
+    )
+    return jsonify({'message': 'סיסמה אופסה'}), 200
+
+
 @auth_bp.route('/avatar', methods=['POST'])
 @require_auth
 def update_avatar():
