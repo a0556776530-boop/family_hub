@@ -9,15 +9,11 @@ family_bp = Blueprint('family', __name__)
 
 def family_public(fam, members_data):
     return {
-        'id':          str(fam['_id']),
-        'name':        fam['name'],
-        'invite_code': fam['invite_code'],
-        'admin_id':    str(fam['admin_id']),
-        'score':       fam.get('score', 0),
-        'level':       (fam.get('score', 0) // 500) + 1,
-        'xp_current':  fam.get('score', 0) % 500,
-        'xp_next':     500,
-        'members':     members_data,
+        'id':           str(fam['_id']),
+        'name':         fam['name'],
+        'invite_code':  fam['invite_code'],
+        'admin_id':     str(fam['admin_id']),
+        'members':      members_data,
         'member_count': len(fam.get('members', [])),
     }
 

@@ -80,8 +80,7 @@ export default function Family() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
-  const sorted = [...(family.members || [])].sort((a, b) => (b.score || 0) - (a.score || 0))
-  const xpPct  = Math.round((family.xp_current / family.xp_next) * 100)
+  const members = family.members || []
 
   return (
     <div className="min-h-screen bg-[#f0f4f8]">
@@ -118,18 +117,10 @@ export default function Family() {
                   )}
                 </div>
               )}
-              <p className="text-blue-200 text-sm">{family.member_count} חברים · רמה {family.level}</p>
+              <p className="text-blue-200 text-sm">{family.member_count} חברים</p>
             </div>
           </div>
 
-          {/* XP bar */}
-          <div className="bg-white/20 rounded-full h-2 mb-1">
-            <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${xpPct}%` }} />
-          </div>
-          <div className="flex justify-between text-blue-100 text-xs">
-            <span>{family.xp_current} XP</span>
-            <span>{family.xp_next} XP לרמה {family.level + 1}</span>
-          </div>
         </div>
 
         {/* Invite code */}
@@ -164,14 +155,14 @@ export default function Family() {
           </div>
         )}
 
-        {/* Leaderboard */}
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-50">
-            <h3 className="font-bold text-gray-800">לוח מובילים 🏆</h3>
+        {/* Members list */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-50 dark:border-gray-700">
+            <h3 className="font-bold text-gray-800 dark:text-white">חברי המשפחה 👨‍👩‍👧‍👦</h3>
           </div>
-          <div className="divide-y divide-gray-50">
-            {sorted.map((member, idx) => (
-              <MemberRow key={member.id} member={member} rank={idx + 1} isMe={member.id === user?.id}
+          <div className="divide-y divide-gray-50 dark:divide-gray-700">
+            {members.map(member => (
+              <MemberRow key={member.id} member={member} isMe={member.id === user?.id}
                 canRemove={(user?.role === 'admin' || user?.role === 'parent') && member.id !== user?.id}
                 onRemove={() => removeMember(member.id)}
                 removing={removing === member.id}
@@ -213,40 +204,29 @@ export default function Family() {
   )
 }
 
-function MemberRow({ member, rank, isMe, canRemove, onRemove, removing, canResetPw, onResetPw }) {
-  const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' }
-  const level = Math.floor((member.score || 0) / 100) + 1
+function MemberRow({ member, isMe, canRemove, onRemove, removing, canResetPw, onResetPw }) {
+  const roleLabel = member.role === 'parent' ? 'הורה' : 'ילד'
+  const roleEmoji = member.role === 'parent' ? '👨‍👩‍👧' : '👦'
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 ${isMe ? 'bg-blue-50' : ''}`}>
-      <div className="w-8 text-center shrink-0">
-        {MEDAL[rank]
-          ? <span className="text-xl">{MEDAL[rank]}</span>
-          : <span className="text-gray-400 font-bold text-sm">#{rank}</span>}
-      </div>
-
-      <div className="w-10 h-10 rounded-full bg-blue-100 ring-2 ring-blue-200 overflow-hidden flex items-center justify-center shrink-0">
+    <div className={`flex items-center gap-3 px-4 py-3 ${isMe ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 ring-2 ring-blue-200 dark:ring-blue-700 overflow-hidden flex items-center justify-center shrink-0">
         {member.avatar_url
           ? <img src={member.avatar_url} className="w-full h-full object-cover" alt="" />
-          : <span className="text-blue-600 font-bold text-base">{member.name?.[0]?.toUpperCase()}</span>}
+          : <span className="text-blue-600 dark:text-blue-400 font-bold text-base">{member.name?.[0]?.toUpperCase()}</span>}
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className={`font-semibold text-sm truncate ${isMe ? 'text-blue-700' : 'text-gray-800'}`}>
+          <p className={`font-semibold text-sm truncate ${isMe ? 'text-blue-700 dark:text-blue-400' : 'text-gray-800 dark:text-white'}`}>
             {member.name}
           </p>
           {isMe && <span className="text-[10px] bg-blue-100 text-blue-600 font-bold px-1.5 py-0.5 rounded-full shrink-0">אתה</span>}
-          {member.role === 'admin' && <span className="text-[10px] bg-amber-100 text-amber-600 font-bold px-1.5 py-0.5 rounded-full shrink-0">מנהל</span>}
         </div>
-        <p className="text-gray-400 text-xs">רמה {level}</p>
+        <p className="text-gray-400 text-xs">{roleEmoji} {roleLabel}</p>
       </div>
 
-      <div className="text-right shrink-0 flex items-center gap-2">
-        <div>
-          <p className="font-extrabold text-gray-800 text-sm">{member.score || 0}</p>
-          <p className="text-gray-400 text-xs">נקודות</p>
-        </div>
+      <div className="flex items-center gap-2 shrink-0">
         {canResetPw && (
           <button onClick={onResetPw}
             className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 hover:bg-blue-100 active:scale-90 transition-all"

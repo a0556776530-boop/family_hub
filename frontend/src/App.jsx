@@ -14,7 +14,6 @@ import Calendar    from './pages/Calendar'
 import Shopping    from './pages/Shopping'
 import Family      from './pages/Family'
 import Profile     from './pages/Profile'
-import Rewards       from './pages/Rewards'
 import FamilyBoard   from './pages/FamilyBoard'
 import FamilyMoments from './pages/FamilyMoments'
 import JoinViaLink    from './pages/JoinViaLink'
@@ -59,7 +58,6 @@ function AppRoutes() {
       <Route path="/shopping"     element={<ProtectedRoute><Shopping /></ProtectedRoute>} />
       <Route path="/family"       element={<ProtectedRoute><Family /></ProtectedRoute>} />
       <Route path="/profile"      element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/rewards"      element={<ProtectedRoute><Rewards /></ProtectedRoute>} />
       <Route path="/board"        element={<ProtectedRoute><FamilyBoard /></ProtectedRoute>} />
       <Route path="/moments"      element={<ProtectedRoute><FamilyMoments /></ProtectedRoute>} />
       <Route path="/join/:code"        element={<JoinViaLink />} />

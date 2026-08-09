@@ -52,14 +52,9 @@ export default function Tasks() {
       setTasks(prev => prev.map(t => t.id === task.id ? task : t).filter(t => t.status === filter || (filter === 'awaiting_approval' && t.status === 'awaiting_approval')))
       load()
     })
-    socket.on('task_approved', ({ task, xp_earned, completer_id }) => {
-      if (completer_id === user.id) {
-        showToast(`🎉 +${xp_earned} XP נוסף לארנק שלך!`)
-        confetti()
-      } else {
-        showToast('✅ משימה אושרה!')
-      }
-      refreshUser()
+    socket.on('task_approved', ({ task, completer_id }) => {
+      showToast(completer_id === user.id ? '🎉 כל הכבוד! המשימה אושרה!' : '✅ משימה אושרה!')
+      confetti()
       load()
     })
     socket.on('task_deleted', ({ id }) => setTasks(prev => prev.filter(t => t.id !== id)))
@@ -82,8 +77,8 @@ export default function Tasks() {
   const complete = async (task) => {
     try {
       const res = await api.patch(`/api/tasks/${task.id}/complete`)
-      showToast(res.data.awaiting ? '⏳ נשלח לאישור הורה!' : `🎉 +${res.data.xp_earned} XP!`)
-      if (!res.data.awaiting) { refreshUser(); confetti() }
+      showToast(res.data.awaiting ? '⏳ נשלח לאישור הורה!' : '🎉 כל הכבוד!')
+      if (!res.data.awaiting) confetti()
       load()
     } catch (err) {
       showToast(err.response?.data?.message || 'שגיאה')
@@ -92,10 +87,9 @@ export default function Tasks() {
 
   const approve = async (task) => {
     try {
-      const res = await api.patch(`/api/tasks/${task.id}/approve`)
-      showToast(res.data.message)
+      await api.patch(`/api/tasks/${task.id}/approve`)
+      showToast('🎉 משימה אושרה!')
       confetti()
-      refreshUser()
       load()
     } catch (err) {
       showToast(err.response?.data?.message || 'שגיאה')
@@ -227,9 +221,7 @@ function TaskCard({ task, user, family, isParent, onComplete, onApprove, onDelet
             {task.title}
           </p>
           <p className="text-gray-400 dark:text-gray-500 text-xs">
-            {task.category}
-            {member ? ` · ${member.name?.split(' ')[0]}` : ''}
-            {` · ${task.xp_value} XP`}
+            {task.category}{member ? ` · ${member.name?.split(' ')[0]}` : ''}
           </p>
         </div>
 
@@ -259,7 +251,7 @@ function TaskCard({ task, user, family, isParent, onComplete, onApprove, onDelet
 }
 
 function AddTaskModal({ family, onClose, onSaved }) {
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', category: 'אחר', assigned_to: '', xp_value: 10 })
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', category: 'אחר', assigned_to: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -310,19 +302,13 @@ function AddTaskModal({ family, onClose, onSaved }) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="הקצה ל">
-            <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}
-              className="modal-input dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-              <option value="">כולם</option>
-              {family?.members?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </Field>
-          <Field label={`XP: ${form.xp_value}`}>
-            <input type="range" min={1} max={100} value={form.xp_value}
-              onChange={e => set('xp_value', +e.target.value)} className="w-full mt-2" />
-          </Field>
-        </div>
+        <Field label="הקצה ל">
+          <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}
+            className="modal-input dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+            <option value="">כולם</option>
+            {family?.members?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </Field>
 
         <button type="submit" disabled={loading}
           className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform disabled:opacity-60">

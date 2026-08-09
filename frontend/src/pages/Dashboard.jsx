@@ -42,8 +42,6 @@ export default function Dashboard() {
   if (loading) return <PageLoader />
 
   const { family, pending_tasks, done_tasks, upcoming_events } = data
-  const level  = family.level
-  const xpPct  = Math.round((family.xp_current / family.xp_next) * 100)
   const greeting = getGreeting()
 
   return (
@@ -55,24 +53,6 @@ export default function Dashboard() {
         <div className="pt-2">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white">{greeting}, {user?.name?.split(' ')[0]} 👋</h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm">הנה מה שקורה היום במשפחת {family.name}</p>
-        </div>
-
-        {/* Level card */}
-        <div className="bg-gradient-to-l from-blue-700 to-blue-500 dark:from-blue-900 dark:to-blue-700 rounded-2xl p-4 text-white shadow-md">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-blue-100 text-xs font-medium">רמת המשפחה</p>
-              <p className="text-2xl font-extrabold">רמה {level} 🏆</p>
-            </div>
-            <div className="text-right">
-              <p className="text-blue-100 text-xs">ניקוד כולל</p>
-              <p className="text-xl font-bold">{family.score}</p>
-            </div>
-          </div>
-          <div className="bg-white/20 rounded-full h-2">
-            <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${xpPct}%` }} />
-          </div>
-          <p className="text-blue-100 text-xs mt-1.5">{family.xp_current} / {family.xp_next} XP לרמה הבאה</p>
         </div>
 
         {/* Parent: awaiting approval banner */}
@@ -87,19 +67,6 @@ export default function Dashboard() {
             <svg className="w-5 h-5 text-amber-400 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
-          </button>
-        )}
-
-        {/* Child: wallet balance card */}
-        {!isParent && (
-          <button onClick={() => navigate('/rewards')}
-            className="w-full bg-gradient-to-l from-violet-600 to-purple-500 dark:from-violet-900 dark:to-purple-800 rounded-2xl px-4 py-3.5 flex items-center gap-3 active:scale-95 transition-transform shadow-md">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-xl shrink-0">💰</div>
-            <div className="flex-1 text-right">
-              <p className="text-purple-100 text-xs font-medium">הארנק שלי</p>
-              <p className="text-white font-extrabold text-xl">{user?.wallet_balance ?? 0} <span className="text-sm font-bold text-purple-200">XP</span></p>
-            </div>
-            <span className="text-purple-200 text-xs font-semibold">לחנות →</span>
           </button>
         )}
 
@@ -127,7 +94,7 @@ export default function Dashboard() {
               { label: 'יומן', emoji: '📅', to: '/calendar', bg: 'bg-purple-50 dark:bg-purple-900/20' },
               { label: 'קניות', emoji: '🛒', to: '/shopping', bg: 'bg-green-50 dark:bg-green-900/20' },
               { label: 'משפחה', emoji: '👨‍👩‍👧', to: '/family', bg: 'bg-orange-50 dark:bg-orange-900/20' },
-              { label: 'רגעים', emoji: '📸', to: '/moments', bg: 'bg-pink-50 dark:bg-pink-900/20' },
+              { label: 'רגעים',  emoji: '📸', to: '/moments',  bg: 'bg-pink-50 dark:bg-pink-900/20' },
             ].map(s => (
               <button key={s.to} onClick={() => navigate(s.to)}
                 className={`${s.bg} w-full rounded-2xl p-3 flex flex-col items-center gap-1.5 active:scale-95 transition-transform shadow-sm cursor-pointer`}>
@@ -198,7 +165,7 @@ export default function Dashboard() {
                     : <span className="text-blue-600 dark:text-blue-400 font-bold text-lg">{m.name?.[0]?.toUpperCase()}</span>}
                 </div>
                 <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">{m.name?.split(' ')[0]}</span>
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">{m.score} ⭐</span>
+                <span className="text-[10px] text-gray-400 font-medium">{m.role === 'parent' ? '👨‍👩‍👧 הורה' : '👦 ילד'}</span>
               </button>
             ))}
           </div>

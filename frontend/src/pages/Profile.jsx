@@ -43,10 +43,6 @@ export default function Profile() {
     } finally { setSavingName(false) }
   }
 
-  const level     = Math.floor((user?.score || 0) / 100) + 1
-  const xpInLevel = (user?.score || 0) % 100
-  const xpPct     = xpInLevel
-
   const role    = user?.role || 'child'
   const roleConf = ROLE_CONFIG[role] || ROLE_CONFIG.child
   const wallet  = user?.wallet_balance ?? 0
@@ -155,55 +151,6 @@ export default function Profile() {
               {roleConf.emoji} {roleConf.label}
             </span>
           </div>
-        </div>
-
-        {/* Wallet card — always visible */}
-        <div className="bg-gradient-to-l from-violet-600 to-purple-500 dark:from-violet-900 dark:to-purple-800 rounded-2xl p-4 text-white shadow-md flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl shrink-0">💰</div>
-          <div className="flex-1">
-            <p className="text-purple-100 text-xs font-medium mb-0.5">יתרת הארנק</p>
-            <p className="text-3xl font-extrabold">{wallet} <span className="text-xl font-bold text-purple-200">XP</span></p>
-          </div>
-          <button onClick={() => navigate('/rewards')}
-            className="bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors">
-            לחנות
-          </button>
-        </div>
-
-        {/* Score card */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-gray-800 dark:text-white">ניקוד אישי</h3>
-            <span className="text-2xl font-extrabold text-blue-600 dark:text-blue-400">{user?.score || 0} ⭐</span>
-          </div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl shrink-0">🏆</div>
-            <div className="flex-1">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm font-bold text-gray-700 dark:text-gray-200">רמה {level}</span>
-                <span className="text-xs text-gray-400">{xpInLevel}/100 XP</span>
-              </div>
-              <div className="bg-gray-100 dark:bg-gray-700 rounded-full h-2">
-                <div className="bg-amber-400 rounded-full h-2 transition-all" style={{ width: `${xpPct}%` }} />
-              </div>
-            </div>
-          </div>
-          <p className="text-gray-400 text-xs text-center mt-2">השלם משימות כדי לצבור נקודות ולעלות רמות!</p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'רמה', value: level, emoji: '🏆' },
-            { label: 'ניקוד', value: user?.score || 0, emoji: '⭐' },
-            { label: 'XP לרמה', value: 100 - xpInLevel, emoji: '⚡' },
-          ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-gray-800 rounded-2xl p-3 text-center shadow-sm">
-              <div className="text-xl mb-1">{s.emoji}</div>
-              <div className="text-lg font-extrabold text-gray-800 dark:text-white">{s.value}</div>
-              <div className="text-gray-400 text-[10px]">{s.label}</div>
-            </div>
-          ))}
         </div>
 
         {/* Role badge */}

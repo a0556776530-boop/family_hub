@@ -33,8 +33,6 @@ def user_public(user: dict) -> dict:
         'name':           user.get('name', ''),
         'email':          user.get('email', ''),
         'avatar_url':     user.get('avatar_url', ''),
-        'role':           role,
-        'score':          user.get('score', 0),
-        'wallet_balance': user.get('wallet_balance', 0),
-        'family_id':      str(user['family_id']) if user.get('family_id') else None,
+        'role':      role,
+        'family_id': str(user['family_id']) if user.get('family_id') else None,
     }

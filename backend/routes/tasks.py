@@ -97,21 +97,15 @@ def complete_task(task_id):
     xp_value  = task.get('score_value', 10)
 
     if is_parent:
-        # הורה — השלמה מיידית
         mongo.db.tasks.update_one(
             {'_id': ObjectId(task_id)},
             {'$set': {'status': 'done', 'completed_by': str(user['_id']), 'completed_at': datetime.now(timezone.utc)}}
         )
-        mongo.db.users.update_one({'_id': user['_id']}, {'$inc': {'score': xp_value, 'wallet_balance': xp_value}})
-        mongo.db.families.update_one({'_id': ObjectId(user['family_id'])}, {'$inc': {'score': xp_value}})
-
-        updated_user = mongo.db.users.find_one({'_id': user['_id']})
         task_updated = mongo.db.tasks.find_one({'_id': ObjectId(task_id)})
         pub = task_public(task_updated)
         socketio.emit('task_updated', pub, room=user['family_id'])
-        return jsonify({'message': 'המשימה הושלמה!', 'xp_earned': xp_value, 'user_score': updated_user.get('score', 0)}), 200
+        return jsonify({'message': 'המשימה הושלמה!'}), 200
     else:
-        # ילד — ממתין לאישור הורה
         mongo.db.tasks.update_one(
             {'_id': ObjectId(task_id)},
             {'$set': {'status': 'awaiting_approval', 'completed_by': str(user['_id']), 'completed_at': datetime.now(timezone.utc)}}
@@ -147,31 +141,16 @@ def approve_task(task_id):
         {'$set': {'status': 'done', 'approved_by': str(user['_id']), 'approved_at': datetime.now(timezone.utc)}}
     )
 
-    if completer_id:
-        mongo.db.users.update_one(
-            {'_id': ObjectId(completer_id)},
-            {'$inc': {'score': xp_value, 'wallet_balance': xp_value}}
-        )
-
-    mongo.db.families.update_one({'_id': ObjectId(user['family_id'])}, {'$inc': {'score': xp_value}})
-
-    task_updated   = mongo.db.tasks.find_one({'_id': ObjectId(task_id)})
-    completer_user = mongo.db.users.find_one({'_id': ObjectId(completer_id)}) if completer_id else None
-
+    task_updated = mongo.db.tasks.find_one({'_id': ObjectId(task_id)})
     pub = task_public(task_updated)
-    socketio.emit('task_approved', {
-        'task':          pub,
-        'xp_earned':     xp_value,
-        'completer_id':  completer_id,
-        'new_balance':   completer_user.get('wallet_balance', 0) if completer_user else 0,
-    }, room=user['family_id'])
+    socketio.emit('task_approved', {'task': pub, 'completer_id': completer_id}, room=user['family_id'])
 
     def _push():
-        from routes.notifications import send_push_to_user, send_push_to_family
+        from routes.notifications import send_push_to_user
         if completer_id:
-            send_push_to_user(completer_id, '✅ משימה אושרה!', f'+{xp_value} XP על: {task["title"]}', '/tasks')
+            send_push_to_user(completer_id, '✅ משימה אושרה!', f'כל הכבוד על: {task["title"]}', '/tasks')
     Thread(target=_push, daemon=True).start()
-    return jsonify({'message': f'אושר! +{xp_value} XP', 'xp_earned': xp_value}), 200
+    return jsonify({'message': 'המשימה אושרה! 🎉'}), 200
 
 
 @tasks_bp.route('/<task_id>', methods=['DELETE'])
