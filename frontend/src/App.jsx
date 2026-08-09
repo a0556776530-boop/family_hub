@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { FamilyProvider } from './context/FamilyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { usePushNotifications } from './hooks/usePushNotifications'
+import AppLock from './components/AppLock'
 
 import Splash      from './pages/Splash'
 import Login       from './pages/Login'
@@ -73,7 +74,9 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <FamilyProvider>
-            <AppRoutes />
+            <AppLock>
+              <AppRoutes />
+            </AppLock>
           </FamilyProvider>
         </AuthProvider>
       </ThemeProvider>
