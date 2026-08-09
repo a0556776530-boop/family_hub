@@ -10,4 +10,4 @@ pymongo==4.10.1
 certifi
 dnspython
 cloudinary
-pywebpush
+pywebpush==1.14.1

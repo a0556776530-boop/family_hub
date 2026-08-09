@@ -2,7 +2,12 @@ import os, json
 from flask import Blueprint, request, jsonify
 from app import mongo
 from utils.jwt_utils import require_auth
-from pywebpush import webpush, WebPushException
+
+try:
+    from pywebpush import webpush, WebPushException
+    _PUSH_AVAILABLE = True
+except Exception:
+    _PUSH_AVAILABLE = False
 
 notifications_bp = Blueprint('notifications', __name__)
 
@@ -12,7 +17,7 @@ VAPID_EMAIL   = 'mailto:admin@familyhub.app'
 
 
 def send_push_to_family(family_id, title, body, url='/'):
-    if not VAPID_PRIVATE or not VAPID_PUBLIC:
+    if not _PUSH_AVAILABLE or not VAPID_PRIVATE or not VAPID_PUBLIC:
         return
     subs = list(mongo.db.push_subscriptions.find({'family_id': family_id}))
     for sub in subs:
@@ -29,7 +34,7 @@ def send_push_to_family(family_id, title, body, url='/'):
 
 
 def send_push_to_user(user_id, title, body, url='/'):
-    if not VAPID_PRIVATE or not VAPID_PUBLIC:
+    if not _PUSH_AVAILABLE or not VAPID_PRIVATE or not VAPID_PUBLIC:
         return
     subs = list(mongo.db.push_subscriptions.find({'user_id': user_id}))
     for sub in subs:
