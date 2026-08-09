@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-
 import { useAuth } from '../context/AuthContext'
+import api from '../api/client'
+import { isWebAuthnSupported, loginWithFingerprint } from '../utils/webauthn'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, setAuthToken } = useAuth()
   const navigate  = useNavigate()
-  const [form, setForm]     = useState({ email: '', password: '' })
-  const [error, setError]   = useState('')
-  const [loading, setLoading] = useState(false)
+  const [form, setForm]         = useState({ email: '', password: '' })
+  const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [fpLoading, setFpLoading] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -25,6 +27,29 @@ export default function Login() {
       setLoading(false)
     }
   }
+
+  const handleFingerprint = async () => {
+    if (!form.email) return setError('הכנס אימייל כדי להשתמש בטביעת אצבע')
+    setError('')
+    setFpLoading(true)
+    try {
+      const { token, user } = await loginWithFingerprint(form.email, api)
+      setAuthToken(token, user)
+      navigate('/', { replace: true })
+    } catch (err) {
+      if (err.name === 'NotAllowedError') {
+        setError('האימות בוטל')
+      } else if (err.response?.data?.error === 'no_credentials') {
+        setError('לא נרשמה טביעת אצבע לחשבון זה — כנס עם סיסמה תחילה')
+      } else {
+        setError(err.response?.data?.message || 'שגיאה בזיהוי טביעת אצבע')
+      }
+    } finally {
+      setFpLoading(false)
+    }
+  }
+
+  const webAuthnOk = isWebAuthnSupported()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 flex flex-col items-center justify-center px-6">
@@ -71,7 +96,23 @@ export default function Login() {
           {loading ? 'מתחבר...' : 'התחברות'}
         </button>
 
-
+        {webAuthnOk && (
+          <button
+            type="button"
+            onClick={handleFingerprint}
+            disabled={fpLoading}
+            className="w-full bg-white/15 border border-white/30 text-white font-bold py-3.5 rounded-2xl text-base active:scale-95 transition-transform disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {fpLoading ? (
+              <span className="animate-pulse">מאמת...</span>
+            ) : (
+              <>
+                <span className="text-xl">👆</span>
+                כניסה עם טביעת אצבע
+              </>
+            )}
+          </button>
+        )}
       </form>
 
       <div className="text-center mt-4">

@@ -46,8 +46,13 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const setAuthToken = (token, userData) => {
+    localStorage.setItem('fh_token', token)
+    setUser(userData)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, setAuthToken }}>
       {children}
     </AuthContext.Provider>
   )

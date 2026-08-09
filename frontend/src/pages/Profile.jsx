@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Header from '../components/layout/Header'
 import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useFamily } from '../context/FamilyContext'
+import { isWebAuthnSupported, registerFingerprint } from '../utils/webauthn'
 
 const ROLE_CONFIG = {
   parent: { label: 'הורה', emoji: '👨‍👩‍👧', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
@@ -31,6 +32,38 @@ export default function Profile() {
   const [pwLoading, setPwLoading]       = useState(false)
   const [pwError, setPwError]           = useState('')
   const [pwSuccess, setPwSuccess]       = useState(false)
+  const [fpRegistered, setFpRegistered] = useState(false)
+  const [fpLoading, setFpLoading]       = useState(false)
+  const [fpMsg, setFpMsg]               = useState('')
+
+  useEffect(() => {
+    if (!isWebAuthnSupported()) return
+    api.get('/api/auth/webauthn/status')
+      .then(r => setFpRegistered(r.data.registered))
+      .catch(() => {})
+  }, [])
+
+  const handleRegisterFingerprint = async () => {
+    setFpLoading(true); setFpMsg('')
+    try {
+      await registerFingerprint(api)
+      setFpRegistered(true)
+      setFpMsg('✅ טביעת האצבע נרשמה!')
+    } catch (e) {
+      if (e.name === 'NotAllowedError') setFpMsg('בוטל על ידי המשתמש')
+      else setFpMsg(e.response?.data?.message || 'שגיאה ברישום')
+    } finally { setFpLoading(false) }
+  }
+
+  const handleUnregisterFingerprint = async () => {
+    setFpLoading(true); setFpMsg('')
+    try {
+      await api.delete('/api/auth/webauthn/unregister')
+      setFpRegistered(false)
+      setFpMsg('טביעת האצבע הוסרה')
+    } catch { setFpMsg('שגיאה') }
+    finally { setFpLoading(false) }
+  }
 
   const openEditName = () => { setNameVal(user?.name || ''); setEditName(true) }
   const saveName = async () => {
@@ -165,6 +198,33 @@ export default function Profile() {
             </p>
           </div>
         </div>
+
+        {/* Fingerprint */}
+        {isWebAuthnSupported() && (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">👆</span>
+                <div>
+                  <p className="font-bold text-sm text-gray-800 dark:text-white">כניסה עם טביעת אצבע</p>
+                  <p className="text-xs text-gray-400">{fpRegistered ? '✅ פעיל' : 'לא מוגדר'}</p>
+                </div>
+              </div>
+              <button
+                onClick={fpRegistered ? handleUnregisterFingerprint : handleRegisterFingerprint}
+                disabled={fpLoading}
+                className={`px-4 py-2 rounded-xl text-sm font-bold active:scale-95 transition-transform disabled:opacity-60 ${
+                  fpRegistered
+                    ? 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400'
+                    : 'bg-blue-600 text-white'
+                }`}
+              >
+                {fpLoading ? '...' : fpRegistered ? 'הסר' : 'הפעל'}
+              </button>
+            </div>
+            {fpMsg && <p className="text-sm text-center mt-2 text-gray-500 dark:text-gray-400">{fpMsg}</p>}
+          </div>
+        )}
 
         {/* Change password */}
         <button onClick={openChangePw}
