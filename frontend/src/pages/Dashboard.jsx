@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [tasks, setTasks]         = useState([])
   const [events, setEvents]       = useState([])
   const [awaitingCount, setAwaitingCount] = useState(0)
-  const [featuredMoment, setFeaturedMoment] = useState(null)
+  const [moments, setMoments] = useState([])
   const [loading, setLoading]     = useState(true)
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function Dashboard() {
       setData(d.data)
       setTasks(t.data.tasks?.slice(0, 3) || [])
       setEvents((e.data.events || []).filter(ev => ev.date >= today()).slice(0, 3))
-      if (m.data.moments?.length) setFeaturedMoment(m.data.moments[0])
+      if (m.data.moments?.length) setMoments(m.data.moments.slice(0, 6))
       if (aw) setAwaitingCount(aw.data.tasks?.length || 0)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [isParent])
@@ -171,25 +171,30 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Featured moment */}
-        {featuredMoment && (
+        {/* Moments gallery */}
+        {moments.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-gray-800 dark:text-white">רגע אחרון 📸</h3>
+              <h3 className="font-bold text-gray-800 dark:text-white">רגעים 📸</h3>
               <button onClick={() => navigate('/moments')} className="text-blue-600 dark:text-blue-400 text-sm font-medium">הכל</button>
             </div>
-            <button onClick={() => navigate('/moments')}
-              className="w-full relative rounded-2xl overflow-hidden shadow-sm active:scale-95 transition-transform">
-              <img
-                src={featuredMoment.image_url}
-                alt={featuredMoment.caption || 'רגע משפחתי'}
-                className="w-full h-40 object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-              {featuredMoment.caption && (
-                <p className="absolute bottom-3 right-3 text-white text-sm font-semibold">{featuredMoment.caption}</p>
-              )}
-            </button>
+            <div className="grid grid-cols-3 gap-1.5">
+              {moments.map((m, i) => (
+                <button key={m.id || i} onClick={() => navigate('/moments')}
+                  className="relative rounded-xl overflow-hidden aspect-square shadow-sm active:scale-95 transition-transform bg-gray-100 dark:bg-gray-800">
+                  <img
+                    src={m.image_url}
+                    alt={m.caption || ''}
+                    className="w-full h-full object-cover"
+                  />
+                  {m.caption && i === 0 && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent">
+                      <p className="absolute bottom-1.5 right-2 left-2 text-white text-[10px] font-semibold truncate text-right">{m.caption}</p>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
           </section>
         )}
 
