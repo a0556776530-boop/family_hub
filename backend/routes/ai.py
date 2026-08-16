@@ -19,30 +19,30 @@ except Exception:
     _AI_AVAILABLE = False
 
 MODEL = 'llama-3.3-70b-versatile'
-
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
+VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
 
-# ─── Tool definitions for Groq ─────────────────────────────────────────────
+# ─── Tools ─────────────────────────────────────────────────────────────────
 
 TOOLS = [
+    # ── Shopping ──────────────────────────────────────────────────────────
     {
         "type": "function",
         "function": {
             "name": "add_shopping_items",
-            "description": "מוסיף פריטים לרשימת הקניות של המשפחה. השתמש בכלי הזה כשהמשתמש מבקש להוסיף משהו לקניות, מזכיר מתכון, ארוחה, או כל צורך שמצריך קניית מוצרים.",
+            "description": "מוסיף פריטים לרשימת הקניות. השתמש כשהמשתמש מציין בפירוש מה להוסיף — מוצרים, מתכון, ארוחה, ציוד לטיול וכו'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "items": {
                         "type": "array",
-                        "description": "רשימת הפריטים להוספה",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "name":     {"type": "string",  "description": "שם הפריט בעברית"},
-                                "quantity": {"type": "number",  "description": "כמות (ברירת מחדל 1)"},
-                                "unit":     {"type": "string",  "description": "יחידה: גר/קג/מל/ל/יח/אריזה או ריק"},
-                                "category": {"type": "string",  "description": "אחת מ: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר"}
+                                "name":     {"type": "string"},
+                                "quantity": {"type": "number"},
+                                "unit":     {"type": "string"},
+                                "category": {"type": "string", "description": "ירקות/פירות/מזון/ניקיון/פארם/תינוקות/אחר"}
                             },
                             "required": ["name"]
                         }
@@ -55,15 +55,59 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_upcoming_events",
-            "description": "מחזיר את האירועים הקרובים ביומן המשפחתי. השתמש כשהמשתמש שואל על לוח הזמנים, מה יש השבוע, מה קורה, וכו'.",
+            "name": "get_shopping_list",
+            "description": "מחזיר את רשימת הקניות הנוכחית. השתמש כשהמשתמש שואל מה יש ברשימה, לפני מחיקה/עריכה של פריט.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_shopping_item",
+            "description": "מוחק פריט מרשימת הקניות לפי שם. השתמש כשהמשתמש מבקש למחוק פריט.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "days_ahead": {
-                        "type": "integer",
-                        "description": "כמה ימים קדימה לחפש (ברירת מחדל 7)"
-                    }
+                    "name": {"type": "string", "description": "שם הפריט למחיקה (חיפוש חלקי)"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "toggle_shopping_done",
+            "description": "מסמן פריט בקניות כנקנה או מבטל סימון. השתמש כשהמשתמש אומר 'קניתי X' או 'תסמן X כנקנה'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "שם הפריט"},
+                    "done": {"type": "boolean", "description": "true=נקנה, false=לא נקנה"}
+                },
+                "required": ["name", "done"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_completed_shopping",
+            "description": "מנקה את כל הפריטים שסומנו כנקנו. השתמש כשהמשתמש אומר 'נקה נקנו' או 'מחק שהושלם'.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+
+    # ── Calendar ──────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_events",
+            "description": "מחזיר אירועים קרובים ביומן. השתמש כשהמשתמש שואל מה יש ביומן, השבוע, הלילה וכו'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "days_ahead": {"type": "integer", "description": "כמה ימים קדימה (ברירת מחדל 7)"}
                 }
             }
         }
@@ -72,15 +116,15 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "create_event",
-            "description": "יוצר אירוע חדש ביומן המשפחתי.",
+            "description": "יוצר אירוע ביומן.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title":    {"type": "string", "description": "שם האירוע"},
-                    "date":     {"type": "string", "description": "תאריך בפורמט YYYY-MM-DD"},
-                    "time":     {"type": "string", "description": "שעה בפורמט HH:MM (אופציונלי)"},
-                    "location": {"type": "string", "description": "מיקום (אופציונלי)"},
-                    "emoji":    {"type": "string", "description": "אמוג'י מתאים לאירוע"}
+                    "title":    {"type": "string"},
+                    "date":     {"type": "string", "description": "YYYY-MM-DD"},
+                    "time":     {"type": "string", "description": "HH:MM (אופציונלי)"},
+                    "location": {"type": "string"},
+                    "emoji":    {"type": "string"}
                 },
                 "required": ["title", "date"]
             }
@@ -89,84 +133,137 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_tasks",
-            "description": "מחזיר את המשימות הפתוחות של המשפחה.",
+            "name": "update_event",
+            "description": "עורך אירוע קיים ביומן לפי שם. השתמש כשהמשתמש רוצה לשנות תאריך/שעה/כותרת/מיקום של אירוע.",
             "parameters": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "search_title": {"type": "string", "description": "חלק מהשם הנוכחי של האירוע"},
+                    "title":    {"type": "string", "description": "שם חדש (אופציונלי)"},
+                    "date":     {"type": "string", "description": "תאריך חדש YYYY-MM-DD (אופציונלי)"},
+                    "time":     {"type": "string", "description": "שעה חדשה HH:MM (אופציונלי)"},
+                    "location": {"type": "string"},
+                    "emoji":    {"type": "string"}
+                },
+                "required": ["search_title"]
             }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "create_task",
-            "description": "יוצר משימה חדשה לבית.",
+            "name": "delete_event",
+            "description": "מוחק אירוע מהיומן לפי שם.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title":       {"type": "string", "description": "תיאור המשימה"},
-                    "priority":    {"type": "string", "description": "עדיפות: low/medium/high"},
-                    "category":    {"type": "string", "description": "קטגוריה: ניקיון/מטבח/לימודים/סידורים/קניות/תחזוקת הבית/אחר"},
-                    "due_date":    {"type": "string", "description": "תאריך יעד YYYY-MM-DD (אופציונלי)"}
+                    "search_title": {"type": "string", "description": "חלק מהשם של האירוע למחיקה"}
+                },
+                "required": ["search_title"]
+            }
+        }
+    },
+
+    # ── Tasks ─────────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "get_tasks",
+            "description": "מחזיר משימות פתוחות. השתמש כשהמשתמש שואל מה המשימות שלנו.",
+            "parameters": {"type": "object", "properties": {}}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_task",
+            "description": "יוצר משימה חדשה.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title":    {"type": "string"},
+                    "priority": {"type": "string", "description": "low/medium/high"},
+                    "category": {"type": "string", "description": "ניקיון/מטבח/לימודים/סידורים/קניות/תחזוקת הבית/אחר"},
+                    "due_date": {"type": "string", "description": "YYYY-MM-DD (אופציונלי)"}
                 },
                 "required": ["title"]
             }
         }
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_task",
+            "description": "מסמן משימה כהושלמה לפי שם. השתמש כשהמשתמש אומר 'סיימתי X' או 'תסמן X כבוצע'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search_title": {"type": "string", "description": "חלק מהשם של המשימה"}
+                },
+                "required": ["search_title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_task",
+            "description": "מוחק משימה לפי שם.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search_title": {"type": "string", "description": "חלק מהשם של המשימה"}
+                },
+                "required": ["search_title"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_task",
+            "description": "עורך משימה קיימת — שם, עדיפות, תאריך יעד.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "search_title": {"type": "string", "description": "חלק מהשם הנוכחי"},
+                    "title":    {"type": "string"},
+                    "priority": {"type": "string"},
+                    "due_date": {"type": "string"},
+                    "category": {"type": "string"}
+                },
+                "required": ["search_title"]
+            }
+        }
+    },
 ]
-
-SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה — כמו Grok או Gemini — אבל מותאם לעברית ולמשפחה הישראלית.
-
-אתה יכול לעזור בכל דבר:
-• לענות על כל שאלה — מדע, היסטוריה, טכנולוגיה, בריאות, משפט, כלכלה, ספורט
-• מתכונים מפורטים עם כמויות ושלבים
-• תכנון טיולים ורשימות ציוד
-• עצות לחינוך ילדים, זוגיות, עבודה
-• ניתוח, כתיבה, תרגום, הסבר מושגים
-• כל שאלה שתבוא — תענה עליה
-
-ובנוסף, יש לך כלים לניהול הבית:
-🛒 הוספה ישירה לרשימת קניות
-📅 צפייה ויצירת אירועים ביומן המשפחתי
-✅ צפייה ויצירת משימות בבית
-
-כללי השימוש בכלים:
-- כשמשתמש מבקש להוסיף פריטים ספציפיים לקניות → השתמש בכלי add_shopping_items עם הפריטים שציין
-- כשמשתמש מבקש לראות היומן → השתמש בכלי get_upcoming_events
-- כשמשתמש מבקש ליצור אירוע → השתמש בכלי create_event
-- כשמשתמש מבקש לראות משימות → השתמש בכלי get_tasks
-- כשמשתמש מבקש ליצור משימה → השתמש בכלי create_task
-- אם המשתמש שואל "מה צריך לפיצה?" — ענה עם מתכון/רשימה, ושאל אם להוסיף לקניות
-- אם המשתמש אומר "תוסיף לקניות" בלי לציין מה — שאל "מה תרצה להוסיף?"
-- אל תמציא פריטים שלא ביקשו
-
-סגנון:
-- עברית טבעית, חמה, חכמה ובוטחת
-- תשובות מלאות ומועילות — לא קצר מדי כשהשאלה מצדיקה תשובה ארוכה
-- אחרי שימוש בכלי — ספר בפשטות מה עשית, בלי לציין "כלי" או "פונקציה"
-
-תאריך היום: {today}"""
 
 
 # ─── Tool executor ──────────────────────────────────────────────────────────
+
+def _find_item_by_name(family_id, collection, name_field, search):
+    """Case-insensitive partial name search."""
+    pattern = re.compile(re.escape(search), re.IGNORECASE)
+    return mongo.db[collection].find_one({'family_id': family_id, name_field: {'$regex': pattern}})
+
 
 def execute_tool(name, args, user):
     family_id = user['family_id']
     now = datetime.now(timezone.utc)
 
+    # ── Shopping ──────────────────────────────────────────────────────────
     if name == 'add_shopping_items':
         docs = []
         for item in (args.get('items') or [])[:20]:
-            item_name = str(item.get('name', '')).strip()[:100]
-            if not item_name:
+            iname = str(item.get('name', '')).strip()[:100]
+            if not iname:
                 continue
             cat = item.get('category', 'אחר')
             if cat not in VALID_CATEGORIES:
                 cat = 'אחר'
             docs.append({
                 'family_id':  family_id,
-                'name':       item_name,
+                'name':       iname,
                 'quantity':   max(1, int(item.get('quantity') or 1)),
                 'unit':       str(item.get('unit') or '')[:20],
                 'category':   cat,
@@ -179,29 +276,47 @@ def execute_tool(name, args, user):
             mongo.db.shopping_items.insert_many(docs)
         return {'added': len(docs), 'items': [d['name'] for d in docs]}
 
+    elif name == 'get_shopping_list':
+        items = list(mongo.db.shopping_items.find(
+            {'family_id': family_id}, sort=[('created_at', 1)]
+        ))
+        pending = [{'name': i['name'], 'quantity': i.get('quantity', 1), 'unit': i.get('unit', ''), 'done': i.get('done', False)} for i in items]
+        return {'items': pending, 'count': len(pending)}
+
+    elif name == 'delete_shopping_item':
+        search = str(args.get('name', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        result = mongo.db.shopping_items.delete_many({'family_id': family_id, 'name': {'$regex': pattern}})
+        return {'deleted': result.deleted_count, 'search': search}
+
+    elif name == 'toggle_shopping_done':
+        search = str(args.get('name', '')).strip()
+        done   = bool(args.get('done', True))
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        result = mongo.db.shopping_items.update_many(
+            {'family_id': family_id, 'name': {'$regex': pattern}},
+            {'$set': {'done': done}}
+        )
+        return {'updated': result.modified_count, 'done': done}
+
+    elif name == 'clear_completed_shopping':
+        result = mongo.db.shopping_items.delete_many({'family_id': family_id, 'done': True})
+        return {'deleted': result.deleted_count}
+
+    # ── Calendar ──────────────────────────────────────────────────────────
     elif name == 'get_upcoming_events':
-        days = int(args.get('days_ahead', 7))
         today_str = now.strftime('%Y-%m-%d')
         events = list(mongo.db.events.find(
             {'family_id': family_id, 'date': {'$gte': today_str}}
-        ).sort('date', 1).limit(10))
-        result = []
-        for e in events:
-            result.append({
-                'title': e.get('title', ''),
-                'date':  e.get('date', ''),
-                'time':  e.get('time', ''),
-                'emoji': e.get('emoji', '📅'),
-                'location': e.get('location', ''),
-            })
-        return {'events': result, 'count': len(result)}
+        ).sort('date', 1).limit(15))
+        return {'events': [{'id': str(e['_id']), 'title': e.get('title'), 'date': e.get('date'), 'time': e.get('time', ''), 'emoji': e.get('emoji', '📅'), 'location': e.get('location', '')} for e in events]}
 
     elif name == 'create_event':
         title = str(args.get('title', '')).strip()
         date  = str(args.get('date', '')).strip()
         if not title or not date:
             return {'error': 'missing title or date'}
-        result = mongo.db.events.insert_one({
+        mongo.db.events.insert_one({
             'family_id':  family_id,
             'title':      title,
             'date':       date,
@@ -214,19 +329,31 @@ def execute_tool(name, args, user):
         })
         return {'created': True, 'title': title, 'date': date}
 
+    elif name == 'update_event':
+        search = str(args.get('search_title', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        event = mongo.db.events.find_one({'family_id': family_id, 'title': {'$regex': pattern}})
+        if not event:
+            return {'error': f'לא נמצא אירוע עם השם "{search}"'}
+        allowed = ('title', 'date', 'time', 'location', 'emoji')
+        updates = {k: v for k, v in args.items() if k in allowed and v}
+        if not updates:
+            return {'error': 'nothing to update'}
+        mongo.db.events.update_one({'_id': event['_id']}, {'$set': updates})
+        return {'updated': True, 'title': event['title'], 'changes': list(updates.keys())}
+
+    elif name == 'delete_event':
+        search = str(args.get('search_title', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        result = mongo.db.events.delete_many({'family_id': family_id, 'title': {'$regex': pattern}})
+        return {'deleted': result.deleted_count, 'search': search}
+
+    # ── Tasks ─────────────────────────────────────────────────────────────
     elif name == 'get_tasks':
         tasks = list(mongo.db.tasks.find(
             {'family_id': family_id, 'status': 'pending'}
-        ).sort('created_at', -1).limit(10))
-        result = []
-        for t in tasks:
-            result.append({
-                'title':    t.get('title', ''),
-                'priority': t.get('priority', 'medium'),
-                'due_date': t.get('due_date', ''),
-                'category': t.get('category', ''),
-            })
-        return {'tasks': result, 'count': len(result)}
+        ).sort('created_at', -1).limit(15))
+        return {'tasks': [{'id': str(t['_id']), 'title': t.get('title'), 'priority': t.get('priority', 'medium'), 'due_date': t.get('due_date', ''), 'category': t.get('category', '')} for t in tasks], 'count': len(tasks)}
 
     elif name == 'create_task':
         title = str(args.get('title', '')).strip()
@@ -235,9 +362,8 @@ def execute_tool(name, args, user):
         priority = args.get('priority', 'medium')
         if priority not in ('low', 'medium', 'high'):
             priority = 'medium'
-        valid_cats = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
         category = args.get('category', 'אחר')
-        if category not in valid_cats:
+        if category not in VALID_TASK_CATS:
             category = 'אחר'
         mongo.db.tasks.insert_one({
             'family_id':  family_id,
@@ -252,7 +378,67 @@ def execute_tool(name, args, user):
         })
         return {'created': True, 'title': title}
 
+    elif name == 'complete_task':
+        search = str(args.get('search_title', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        task = mongo.db.tasks.find_one({'family_id': family_id, 'title': {'$regex': pattern}, 'status': 'pending'})
+        if not task:
+            return {'error': f'לא נמצאה משימה פתוחה עם השם "{search}"'}
+        mongo.db.tasks.update_one({'_id': task['_id']}, {'$set': {'status': 'done', 'completed_by': str(user['_id']), 'completed_at': now}})
+        return {'completed': True, 'title': task['title']}
+
+    elif name == 'delete_task':
+        search = str(args.get('search_title', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        result = mongo.db.tasks.delete_many({'family_id': family_id, 'title': {'$regex': pattern}})
+        return {'deleted': result.deleted_count, 'search': search}
+
+    elif name == 'update_task':
+        search = str(args.get('search_title', '')).strip()
+        pattern = re.compile(re.escape(search), re.IGNORECASE)
+        task = mongo.db.tasks.find_one({'family_id': family_id, 'title': {'$regex': pattern}})
+        if not task:
+            return {'error': f'לא נמצאה משימה עם השם "{search}"'}
+        allowed = ('title', 'priority', 'due_date', 'category')
+        updates = {k: v for k, v in args.items() if k in allowed and v}
+        if not updates:
+            return {'error': 'nothing to update'}
+        mongo.db.tasks.update_one({'_id': task['_id']}, {'$set': updates})
+        return {'updated': True, 'title': task['title'], 'changes': list(updates.keys())}
+
     return {'error': f'unknown tool: {name}'}
+
+
+# ─── System Prompt ──────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה — כמו Grok או Gemini — אבל מותאם לעברית ולמשפחה הישראלית.
+
+אתה יכול לעזור בכל דבר:
+• לענות על כל שאלה — מדע, היסטוריה, טכנולוגיה, בריאות, משפט, כלכלה, ספורט
+• מתכונים מפורטים עם כמויות ושלבים
+• תכנון טיולים ורשימות ציוד
+• עצות לחינוך ילדים, זוגיות, עבודה
+• ניתוח, כתיבה, תרגום, הסבר מושגים
+• כל שאלה שתבוא — תענה עליה בצורה מלאה ומועילה
+
+ובנוסף, יש לך שליטה מלאה על האפליקציה המשפחתית:
+🛒 קניות — הוספה, מחיקה, סימון כנקנה, ניקוי, צפייה
+📅 יומן — צפייה, הוספה, עריכה, מחיקת אירועים
+✅ משימות — צפייה, הוספה, עריכה, סימון כבוצע, מחיקה
+
+כללי שימוש בכלים:
+- כשמשתמש מבקש לראות/להוסיף/למחוק/לערוך — השתמש בכלי המתאים
+- כשמשתמש שואל שאלה כללית — ענה מהידע שלך
+- אם המשתמש מבקש להוסיף לקניות בלי לציין מה — שאל "מה תרצה להוסיף?"
+- אחרי שימוש בכלי — ספר בפשטות מה עשית, אל תאמר "כלי" או "פונקציה"
+- אם הפעולה נכשלה (לא נמצא פריט וכו') — ספר ושאל מה לעשות
+
+סגנון:
+- עברית טבעית, חמה, בוטחת
+- תשובות מלאות כשצריך, קצרות כשמספיק
+- אל תמציא פריטים שלא ביקשו
+
+תאריך היום: {today}"""
 
 
 # ─── Chat endpoint ──────────────────────────────────────────────────────────
@@ -277,7 +463,6 @@ def ai_chat():
     today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     system    = SYSTEM_PROMPT.replace('{today}', today_str)
 
-    # Build messages: system + last 20 turns of history + new user message
     messages = [{'role': 'system', 'content': system}]
     for h in history[-20:]:
         if h.get('role') in ('user', 'assistant') and h.get('content'):
@@ -287,7 +472,6 @@ def ai_chat():
     actions = []
 
     try:
-        # First call — may return tool calls
         response = _groq_client.chat.completions.create(
             model=MODEL,
             messages=messages,
@@ -299,9 +483,7 @@ def ai_chat():
 
         choice = response.choices[0]
 
-        # Handle tool calls
         if choice.message.tool_calls:
-            # Serialize the assistant message as a plain dict (Groq requires this)
             messages.append({
                 'role':       'assistant',
                 'content':    choice.message.content or '',
@@ -334,7 +516,6 @@ def ai_chat():
                     'content':      json.dumps(result, ensure_ascii=False),
                 })
 
-            # Second call — get the natural language reply
             final = _groq_client.chat.completions.create(
                 model=MODEL,
                 messages=messages,
@@ -351,13 +532,11 @@ def ai_chat():
         return jsonify({'error': 'ai_error', 'message': str(e)}), 500
 
 
-# ─── Legacy shopping endpoint (kept for backward compat) ───────────────────
+# ─── Legacy shopping endpoint ───────────────────────────────────────────────
 
-SHOPPING_SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפחתית ישראלית.
-החזר JSON בלבד — ללא טקסט, הסברים או markdown.
+SHOPPING_SYSTEM_PROMPT = """אתה עוזר קניות חכם. החזר JSON בלבד.
 פורמט: [{"name":"שם בעברית","category":"מזון","quantity":1,"unit":""}]
-קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר
-יחידות: גר, קג, מל, ל, יח, אריזה"""
+קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר"""
 
 
 @ai_bp.route('/shopping', methods=['POST'])
@@ -395,15 +574,15 @@ def ai_shopping():
         now  = datetime.now(timezone.utc)
         docs = []
         for item in items_data[:20]:
-            name = str(item.get('name', '')).strip()[:100]
-            if not name:
+            iname = str(item.get('name', '')).strip()[:100]
+            if not iname:
                 continue
             cat = item.get('category', 'אחר')
             if cat not in VALID_CATEGORIES:
                 cat = 'אחר'
             docs.append({
                 'family_id':  user['family_id'],
-                'name':       name,
+                'name':       iname,
                 'quantity':   max(1, int(item.get('quantity') or 1)),
                 'unit':       str(item.get('unit') or '')[:20],
                 'category':   cat,
@@ -412,10 +591,8 @@ def ai_shopping():
                 'added_by':   user.get('name', '').split()[0] or 'AI',
                 'created_at': now,
             })
-
         if docs:
             mongo.db.shopping_items.insert_many(docs)
-
         return jsonify({'count': len(docs), 'items': [d['name'] for d in docs]}), 200
 
     except (json.JSONDecodeError, ValueError):

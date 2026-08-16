@@ -31,21 +31,36 @@ function TypingDots() {
 
 function ActionBadges({ actions }) {
   if (!actions?.length) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {actions.map((a, i) => {
-        const { tool, result } = a
-        if (result?.error) return null
-        if (tool === 'add_shopping_items' && result?.added > 0)
-          return <span key={i} className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-xs rounded-full px-2.5 py-1 border border-green-200 dark:border-green-700">🛒 {result.added} פריטים נוספו</span>
-        if (tool === 'create_event' && result?.created)
-          return <span key={i} className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs rounded-full px-2.5 py-1 border border-blue-200 dark:border-blue-700">📅 נוסף ליומן</span>
-        if (tool === 'create_task' && result?.created)
-          return <span key={i} className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs rounded-full px-2.5 py-1 border border-purple-200 dark:border-purple-700">✅ משימה נוצרה</span>
-        return null
-      })}
-    </div>
-  )
+  const badges = actions.map((a, i) => {
+    const { tool, result } = a
+    if (result?.error) return null
+    const map = {
+      add_shopping_items:    result?.added > 0 ? `🛒 ${result.added} פריטים נוספו` : null,
+      delete_shopping_item:  result?.deleted > 0 ? `🗑️ נמחק מהקניות` : null,
+      toggle_shopping_done:  result?.updated > 0 ? `✔️ עודכן ברשימה` : null,
+      clear_completed_shopping: result?.deleted > 0 ? `🧹 נוקה (${result.deleted})` : null,
+      create_event:          result?.created ? `📅 נוסף ליומן` : null,
+      update_event:          result?.updated ? `✏️ יומן עודכן` : null,
+      delete_event:          result?.deleted > 0 ? `🗑️ אירוע נמחק` : null,
+      create_task:           result?.created ? `✅ משימה נוצרה` : null,
+      complete_task:         result?.completed ? `🎉 משימה הושלמה` : null,
+      delete_task:           result?.deleted > 0 ? `🗑️ משימה נמחקה` : null,
+      update_task:           result?.updated ? `✏️ משימה עודכנה` : null,
+    }
+    const label = map[tool]
+    if (!label) return null
+    const colors = {
+      '🛒': 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700',
+      '📅': 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700',
+      '✅': 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700',
+      '🎉': 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700',
+    }
+    const col = colors[label[0]] || 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600'
+    return <span key={i} className={`inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-1 border ${col}`}>{label}</span>
+  }).filter(Boolean)
+
+  if (!badges.length) return null
+  return <div className="mt-2 flex flex-wrap gap-1.5">{badges}</div>
 }
 
 function Message({ msg }) {
