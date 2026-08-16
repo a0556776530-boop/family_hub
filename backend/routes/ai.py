@@ -10,11 +10,10 @@ from utils.jwt_utils import require_auth
 ai_bp = Blueprint('ai', __name__)
 
 try:
-    import google.generativeai as genai
+    from google import genai as _genai_sdk
     _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
     if _GEMINI_KEY:
-        genai.configure(api_key=_GEMINI_KEY)
-        _model = genai.GenerativeModel('gemini-1.5-flash')
+        _genai_client = _genai_sdk.Client(api_key=_GEMINI_KEY)
         _AI_AVAILABLE = True
     else:
         _AI_AVAILABLE = False
@@ -64,7 +63,10 @@ def ai_shopping():
         return jsonify({'error': 'too_long'}), 400
 
     try:
-        response = _model.generate_content(f"{SYSTEM_PROMPT}\n\nבקשת המשתמש: {text}")
+        response = _genai_client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=f"{SYSTEM_PROMPT}\n\nבקשת המשתמש: {text}"
+        )
         raw = response.text.strip()
 
         # Strip markdown code fences if present

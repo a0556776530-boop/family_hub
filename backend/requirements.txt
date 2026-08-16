@@ -12,4 +12,4 @@ dnspython
 cloudinary
 pywebpush==1.14.1
 webauthn
-google-generativeai
+google-genai
