@@ -61,6 +61,30 @@ def create_event():
     return jsonify({'event': event_public(event)}), 201
 
 
+@events_bp.route('/<event_id>', methods=['PATCH'])
+@require_auth
+def update_event(event_id):
+    user  = request.current_user
+    event = mongo.db.events.find_one({'_id': ObjectId(event_id), 'family_id': user.get('family_id')})
+    if not event:
+        return jsonify({'error': 'not_found'}), 404
+
+    is_admin   = user.get('role') in ('admin', 'parent')
+    is_creator = event.get('created_by') == str(user['_id'])
+    if not (is_admin or is_creator):
+        return jsonify({'error': 'forbidden'}), 403
+
+    data    = request.get_json() or {}
+    allowed = ('title', 'date', 'time', 'location', 'emoji', 'type')
+    updates = {k: v for k, v in data.items() if k in allowed}
+    if not updates:
+        return jsonify({'error': 'nothing_to_update'}), 400
+
+    mongo.db.events.update_one({'_id': ObjectId(event_id)}, {'$set': updates})
+    event = mongo.db.events.find_one({'_id': ObjectId(event_id)})
+    return jsonify({'event': event_public(event)}), 200
+
+
 @events_bp.route('/<event_id>', methods=['DELETE'])
 @require_auth
 def delete_event(event_id):

@@ -220,9 +220,12 @@ function TaskCard({ task, user, family, isParent, onComplete, onApprove, onDelet
           <p className={`font-semibold text-sm truncate ${isDone ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-800 dark:text-white'}`}>
             {task.title}
           </p>
-          <p className="text-gray-400 dark:text-gray-500 text-xs">
-            {task.category}{member ? ` · ${member.name?.split(' ')[0]}` : ''}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="text-gray-400 dark:text-gray-500 text-xs">
+              {task.category}{member ? ` · ${member.name?.split(' ')[0]}` : ''}
+            </p>
+            {task.due_date && !isDone && <DueDateBadge date={task.due_date} />}
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -250,8 +253,21 @@ function TaskCard({ task, user, family, isParent, onComplete, onApprove, onDelet
   )
 }
 
+function DueDateBadge({ date }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const isOverdue = date < today
+  const isToday   = date === today
+  const label = isToday ? 'היום' : new Date(date + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+  const cls = isOverdue
+    ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'
+    : isToday
+    ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400'
+    : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+  return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${cls}`}>📅 {label}</span>
+}
+
 function AddTaskModal({ family, onClose, onSaved }) {
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', category: 'אחר', assigned_to: '' })
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', category: 'אחר', assigned_to: '', due_date: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -308,6 +324,11 @@ function AddTaskModal({ family, onClose, onSaved }) {
             <option value="">כולם</option>
             {family?.members?.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+        </Field>
+
+        <Field label="תאריך יעד (אופציונלי)">
+          <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)}
+            className="modal-input dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
         </Field>
 
         <button type="submit" disabled={loading}

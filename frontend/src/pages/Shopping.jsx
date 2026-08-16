@@ -98,6 +98,9 @@ export default function Shopping() {
   const [showModal, setShowModal] = useState(searchParams.get('new') === '1')
   const [filter, setFilter]       = useState('all')
   const [frequent, setFrequent]   = useState([])
+  const [aiText, setAiText]       = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiToast, setAiToast]     = useState(null)
 
   useEffect(() => {
     if (searchParams.get('new') === '1') {
@@ -152,6 +155,26 @@ export default function Shopping() {
     setItems(prev => [...prev, res.data.item])
   }
 
+  const handleAiAdd = async () => {
+    if (!aiText.trim() || aiLoading) return
+    setAiLoading(true)
+    try {
+      const res = await api.post('/api/ai/shopping', { text: aiText })
+      setAiText('')
+      await load()
+      showAiToast(`✅ נוספו ${res.data.count} פריטים`)
+    } catch (err) {
+      showAiToast(err.response?.data?.message || '❌ שגיאה, נסה שוב')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const showAiToast = (msg) => {
+    setAiToast(msg)
+    setTimeout(() => setAiToast(null), 3000)
+  }
+
   const visible = items.filter(i =>
     filter === 'all' ? true : filter === 'pending' ? !i.done : i.done
   )
@@ -193,6 +216,36 @@ export default function Shopping() {
             </button>
           </div>
         </div>
+
+        {/* AI Smart Input */}
+        <div className="mb-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-base">✨</span>
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400">הוסף בעברית חופשית</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={aiText}
+              onChange={e => setAiText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAiAdd()}
+              placeholder="עוגת גבינה, ארוחת שישי, ניקיון הבית..."
+              className="flex-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder:text-gray-400 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-right"
+            />
+            <button
+              onClick={handleAiAdd}
+              disabled={!aiText.trim() || aiLoading}
+              className="bg-blue-600 text-white font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50 shrink-0 text-sm">
+              {aiLoading ? <span className="animate-spin inline-block">⟳</span> : 'הוסף'}
+            </button>
+          </div>
+        </div>
+
+        {/* AI Toast */}
+        {aiToast && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-white dark:text-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl">
+            {aiToast}
+          </div>
+        )}
 
         {/* Frequent quick-add carousel */}
         {frequentChips.length > 0 && (
