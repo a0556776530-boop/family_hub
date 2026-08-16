@@ -1,7 +1,6 @@
 import os
 import json
 import re
-import requests as _requests
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone
 from app import mongo
@@ -9,15 +8,14 @@ from utils.jwt_utils import require_auth
 
 ai_bp = Blueprint('ai', __name__)
 
-_GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
-_AI_AVAILABLE = bool(_GEMINI_KEY)
-
-_MODELS_TO_TRY = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-8b',
-    'gemini-pro',
-]
+try:
+    from groq import Groq
+    _GROQ_KEY = os.environ.get('GROQ_API_KEY', '')
+    _groq_client = Groq(api_key=_GROQ_KEY) if _GROQ_KEY else None
+    _AI_AVAILABLE = bool(_GROQ_KEY)
+except Exception:
+    _groq_client = None
+    _AI_AVAILABLE = False
 
 SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפחתית ישראלית.
 
@@ -25,7 +23,7 @@ SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפח
 - זהה את המתכון הפופולרי הקלאסי
 - ספק את המצרכים המדויקים עם כמויות ריאליות לארוחה משפחתית (4-6 מנות)
 
-כשהמשתמש מתאר ארוחה כללית (כמו "ארוחת שישי", "ברביקיו"):
+כשהמשתמש מתאר ארוחה כללית (כמו "ארוחת שישי", "ברביקיו", "ארוחת בוקר"):
 - ספק רשימת קניות מלאה ומעשית
 
 כשהמשתמש מתאר צורך כללי (כמו "ניקיון הבית", "טיול לאילת", "ילד חולה"):
@@ -33,60 +31,15 @@ SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפח
 
 החזר JSON בלבד — ללא טקסט, הסברים או markdown.
 פורמט: [{"name":"שם בעברית","category":"מזון","quantity":1,"unit":""}]
-קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר"""
-
-
-def _list_available_models():
-    try:
-        r = _requests.get(
-            f"https://generativelanguage.googleapis.com/v1beta/models?key={_GEMINI_KEY}",
-            timeout=10
-        )
-        models = r.json().get('models', [])
-        return [
-            m['name'].replace('models/', '')
-            for m in models
-            if 'generateContent' in m.get('supportedGenerationMethods', [])
-        ]
-    except Exception:
-        return []
-
-
-def _call_gemini(text):
-    payload = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": [{"parts": [{"text": text}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
-    }
-
-    # First try hardcoded list, then fall back to live model list
-    available = _MODELS_TO_TRY + [
-        m for m in _list_available_models() if m not in _MODELS_TO_TRY
-    ]
-
-    for model in available:
-        for api_ver in ('v1beta', 'v1'):
-            url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{model}:generateContent?key={_GEMINI_KEY}"
-            try:
-                r = _requests.post(url, json=payload, timeout=30)
-                if r.status_code == 200:
-                    return r.json()['candidates'][0]['content']['parts'][0]['text']
-            except Exception:
-                continue
-    raise RuntimeError('no working gemini model found')
-
-
-@ai_bp.route('/models', methods=['GET'])
-def list_models():
-    models = _list_available_models()
-    return jsonify({'models': models, 'key_set': bool(_GEMINI_KEY)}), 200
+קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר
+יחידות: גר, קג, מל, ל, יח, אריזה"""
 
 
 @ai_bp.route('/shopping', methods=['POST'])
 @require_auth
 def ai_shopping():
     if not _AI_AVAILABLE:
-        return jsonify({'error': 'ai_unavailable', 'message': 'יש להגדיר GEMINI_API_KEY.'}), 503
+        return jsonify({'error': 'ai_unavailable', 'message': 'יש להגדיר GROQ_API_KEY.'}), 503
 
     user = request.current_user
     if not user.get('family_id'):
@@ -98,15 +51,19 @@ def ai_shopping():
         return jsonify({'error': 'missing_text'}), 400
 
     try:
-        raw = _call_gemini(text).strip()
+        completion = _groq_client.chat.completions.create(
+            model='llama-3.1-8b-instant',
+            messages=[
+                {'role': 'system', 'content': SYSTEM_PROMPT},
+                {'role': 'user', 'content': text},
+            ],
+            temperature=0.3,
+            max_tokens=1024,
+        )
+        raw = completion.choices[0].message.content.strip()
 
-        # Try to extract JSON array from anywhere in the response
         match = re.search(r'\[[\s\S]*\]', raw)
-        if match:
-            raw = match.group(0)
-        else:
-            raw = re.sub(r'^```(?:json)?\s*', '', raw)
-            raw = re.sub(r'\s*```$', '', raw.strip())
+        raw = match.group(0) if match else raw
 
         items_data = json.loads(raw)
         if not isinstance(items_data, list):
