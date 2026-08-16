@@ -527,93 +527,83 @@ SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה �
 תאריך היום: {today}"""
 
 
-# ─── Keyword fallback (works without any LLM tokens) ───────────────────────
+# ─── Intent classifier (~200 tokens, understands any Hebrew phrasing) ────────
 
-def _keyword_parse(message, user):
-    """Parse simple Hebrew commands and execute them without an LLM call."""
-    msg = message.strip().rstrip('?!.')
+_INTENT_PROMPT = """ענה ב-JSON בלבד, ללא שום טקסט אחר.
 
-    def _norm(s):
-        return re.sub(r'\s+', ' ', s).strip().rstrip('?!.')
+זהה מה המשתמש רוצה מתוך האפשרויות:
+add_task | add_shopping | delete_task | complete_task | get_tasks | get_shopping | other
 
-    ADD_WORDS  = r'(?:תוסיף|הוסף|צור|תצור|תכניס|הכנס|להוסיף|לצור|יכול\s+להוסיף|אפשר\s+להוסיף|רוצה\s+להוסיף)'
-    DEL_WORDS  = r'(?:תמחק|מחק|הסר|למחוק|להסיר)'
-    DONE_WORDS = r'(?:סיימתי|סמן|תסמן|השלם|הושלם|בוצע)'
+הודעה: "{msg}"
 
-    # ── Create task ──────────────────────────────────────────────────────────
-    task_add = re.search(
-        ADD_WORDS + r'\s+(?:לי\s+)?משימה\s*[:\-]?\s*(.+)',
-        msg, re.IGNORECASE
-    )
-    if not task_add:
-        # "אתה יכול להוסיף משימה לקנות נעלים?"
-        if re.search(ADD_WORDS, msg, re.IGNORECASE) and 'משימ' in msg:
-            task_add = re.search(r'משימה\s+(.+)', msg, re.IGNORECASE)
-    if not task_add:
-        # "תוסיף לקנות נעלים למשימות"
-        task_add2 = re.search(
-            ADD_WORDS + r'\s+(.+?)\s+ל(?:ה)?משימות?',
-            msg, re.IGNORECASE
+חוקים:
+- add_task: כל בקשה להוסיף/ליצור משימה → {{"intent":"add_task","title":"שם המשימה"}}
+- add_shopping: כל בקשה להוסיף לקניות/לרשימה → {{"intent":"add_shopping","items":["פריט1","פריט2"]}}
+- delete_task: כל בקשה למחוק משימה → {{"intent":"delete_task","title":"שם"}}
+- complete_task: כל בקשה לסמן משימה כבוצע/הושלם → {{"intent":"complete_task","title":"שם"}}
+- get_tasks: כל בקשה לראות/להציג משימות → {{"intent":"get_tasks"}}
+- get_shopping: כל בקשה לראות רשימת קניות → {{"intent":"get_shopping"}}
+- other: שאלה, שיחה, מתכון, מידע, כל דבר אחר → {{"intent":"other"}}
+
+JSON:"""
+
+
+def _classify_and_execute(message, user):
+    """Tiny LLM call (~200 tokens) to understand intent, then execute locally."""
+    if not _groq_client:
+        return None, None
+    try:
+        resp = _groq_client.chat.completions.create(
+            model=MODEL_FALLBACK,
+            messages=[{'role': 'user', 'content': _INTENT_PROMPT.format(msg=message)}],
+            temperature=0,
+            max_tokens=80,
         )
-        if task_add2:
-            title = _norm(task_add2.group(1))
-            if title and len(title) > 1:
-                result = execute_tool('create_task', {'title': title}, user)
-                if result.get('created'):
-                    return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
-    if task_add:
-        title = _norm(task_add.group(1))
-        if title and len(title) > 1:
-            result = execute_tool('create_task', {'title': title}, user)
-            if result.get('created'):
-                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
+        raw = resp.choices[0].message.content.strip()
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if not m:
+            return None, None
+        data = json.loads(m.group(0))
+    except Exception:
+        return None, None
 
-    # ── Delete task ──────────────────────────────────────────────────────────
-    if re.search(DEL_WORDS, msg, re.IGNORECASE) and 'משימ' in msg:
-        task_del = re.search(
-            DEL_WORDS + r'\s+(?:את\s+)?(?:ה?משימה\s+)?(.+?)(?:\s+מ(?:ה)?משימות?)?$',
-            msg, re.IGNORECASE
-        )
-        if task_del:
-            title = _norm(task_del.group(1).replace('משימה', '').replace('משימות', ''))
-            if title and len(title) > 1:
-                result = execute_tool('delete_task', {'search_title': title}, user)
-                if result.get('deleted', 0) > 0:
-                    return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
+    intent = data.get('intent', 'other')
+    if intent == 'other':
+        return None, None
 
-    # ── Complete task ─────────────────────────────────────────────────────────
-    task_done = re.search(
-        r'(?:' + DONE_WORDS + r')\s+(?:את\s+)?(.+?)\s+(?:כבוצע|כהושלם|הושלם)',
-        msg, re.IGNORECASE
-    )
-    if not task_done:
-        task_done = re.search(
-            DONE_WORDS + r'\s+(?:את\s+)?(?:ה?משימה\s+)?(.+)',
-            msg, re.IGNORECASE
-        )
-    if task_done:
-        title = _norm(task_done.group(1).replace('כבוצע','').replace('הושלם',''))
-        if title and len(title) > 1:
-            result = execute_tool('complete_task', {'search_title': title}, user)
-            if result.get('completed'):
-                return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
+    if intent == 'add_task':
+        title = str(data.get('title', '')).strip()
+        if not title:
+            return None, None
+        result = execute_tool('create_task', {'title': title}, user)
+        if result.get('created'):
+            return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
 
-    # ── Add shopping items ────────────────────────────────────────────────────
-    shop_add = re.search(
-        r'(?:תוסיף|הוסף|להוסיף)\s+(?:את\s+)?(.+?)\s+(?:לקניות|לרשימת\s+הקניות|לרשימה)',
-        msg, re.IGNORECASE
-    )
-    if shop_add:
-        raw = _norm(shop_add.group(1))
-        names = [n.strip().strip('את ') for n in re.split(r'[,וְ]', raw) if n.strip()]
-        names = [n for n in names if len(n) > 1]
-        if names:
-            result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in names]}, user)
-            if result.get('added', 0) > 0:
-                return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
+    elif intent == 'add_shopping':
+        items = [str(i).strip() for i in (data.get('items') or []) if str(i).strip()]
+        if not items:
+            return None, None
+        result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in items]}, user)
+        if result.get('added', 0) > 0:
+            return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
 
-    # ── Get tasks ─────────────────────────────────────────────────────────────
-    if re.search(r'(?:מה\s+)?המשימות?|רשימת\s+משימות', msg, re.IGNORECASE):
+    elif intent == 'delete_task':
+        title = str(data.get('title', '')).strip()
+        if not title:
+            return None, None
+        result = execute_tool('delete_task', {'search_title': title}, user)
+        if result.get('deleted', 0) > 0:
+            return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
+
+    elif intent == 'complete_task':
+        title = str(data.get('title', '')).strip()
+        if not title:
+            return None, None
+        result = execute_tool('complete_task', {'search_title': title}, user)
+        if result.get('completed'):
+            return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
+
+    elif intent == 'get_tasks':
         result = execute_tool('get_tasks', {}, user)
         tasks = result.get('tasks', [])
         if not tasks:
@@ -621,8 +611,7 @@ def _keyword_parse(message, user):
         lines = '\n'.join(f'• {t["title"]}' for t in tasks[:10])
         return f'📋 **משימות פתוחות ({len(tasks)}):**\n{lines}', []
 
-    # ── Get shopping list ─────────────────────────────────────────────────────
-    if re.search(r'(?:מה\s+)?(?:יש\s+)?(?:ב)?רשימת?\s+(?:ה)?קניות|מה\s+(?:יש\s+)?(?:ב)?קניות', msg, re.IGNORECASE):
+    elif intent == 'get_shopping':
         result = execute_tool('get_shopping_list', {}, user)
         items = result.get('items', [])
         if not items:
@@ -630,6 +619,30 @@ def _keyword_parse(message, user):
         lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
         return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
 
+    return None, None
+
+
+# ─── Basic regex fallback (zero tokens, absolute last resort) ─────────────────
+
+def _keyword_parse_basic(message, user):
+    """Simple regex for when ALL LLM models are down — covers only obvious patterns."""
+    msg = message.strip()
+    # Add task: "תוסיף משימה X"
+    m = re.search(r'(?:תוסיף|הוסף|צור)\s+(?:לי\s+)?משימה\s+(.+)', msg, re.IGNORECASE)
+    if m:
+        title = m.group(1).strip().rstrip('?!.')
+        if title:
+            result = execute_tool('create_task', {'title': title}, user)
+            if result.get('created'):
+                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
+    # Add shopping: "תוסיף X לקניות"
+    m = re.search(r'(?:תוסיף|הוסף)\s+(.+?)\s+לקניות', msg, re.IGNORECASE)
+    if m:
+        items = [i.strip() for i in re.split(r'[,ו]', m.group(1)) if i.strip()]
+        if items:
+            result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in items]}, user)
+            if result.get('added', 0) > 0:
+                return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
     return None, None
 
 
@@ -648,11 +661,12 @@ def ai_chat():
     data    = request.get_json() or {}
     message = (data.get('message') or '').strip()
 
-    # Fast path: keyword parser runs FIRST — zero tokens for simple commands
-    kw_reply, kw_actions = _keyword_parse(message, user)
-    if kw_reply:
-        return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
     history = data.get('history') or []
+
+    # Intent classifier: ~200 tokens, understands any natural Hebrew phrasing
+    ci_reply, ci_actions = _classify_and_execute(message, user)
+    if ci_reply:
+        return jsonify({'reply': ci_reply, 'actions': ci_actions or []}), 200
 
     if not message:
         return jsonify({'error': 'missing_message'}), 400
@@ -774,8 +788,10 @@ def ai_chat():
 
     except Exception as e:
         err = str(e)
-        # Before giving up, try keyword-based parsing (no tokens needed)
-        kw_reply, kw_actions = _keyword_parse(message, user)
+        # Last resort: try keyword-based parsing (no tokens at all)
+        kw_reply, kw_actions = _classify_and_execute(message, user)
+        if not kw_reply:
+            kw_reply, kw_actions = _keyword_parse_basic(message, user)
         if kw_reply:
             return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
 
