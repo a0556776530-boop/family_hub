@@ -190,116 +190,119 @@ export default function Shopping() {
     .filter(f => !currentNames.has(f.name.trim().toLowerCase()))
     .slice(0, 12)
 
+  const progress = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0
+  const circumference = 2 * Math.PI * 20
+
   return (
-    <div className="min-h-screen bg-[#f0f4f8] dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header />
-      <main className="page-scroll px-4 max-w-lg mx-auto">
+      <main className="page-scroll max-w-lg mx-auto">
 
-        {/* Header row */}
-        <div className="flex items-start justify-between pt-2 mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white">רשימת קניות 🛒</h2>
-            <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
-              {pendingCount > 0 ? `נשאר לקנות ${pendingCount}` : items.length > 0 ? '🎉 הכל נקנה!' : 'הרשימה ריקה'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {doneCount > 0 && (
-              <button onClick={clearDone}
-                className="text-sm text-red-500 font-medium px-3 py-1.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                נקה ({doneCount})
+        {/* Hero header */}
+        <div className="bg-gradient-to-l from-blue-700 to-blue-500 dark:from-gray-800 dark:to-gray-700 px-5 pt-4 pb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-white text-xl font-bold">רשימת קניות</h2>
+              <p className="text-blue-100 text-sm mt-0.5">
+                {items.length === 0 ? 'הרשימה ריקה' : pendingCount > 0 ? `${pendingCount} פריטים נותרו` : '🎉 הכל נקנה!'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Progress ring */}
+              {items.length > 0 && (
+                <div className="relative w-12 h-12">
+                  <svg className="w-12 h-12 -rotate-90">
+                    <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="3.5" />
+                    <circle cx="24" cy="24" r="20" fill="none" stroke="white" strokeWidth="3.5"
+                      strokeDasharray={circumference}
+                      strokeDashoffset={circumference - (progress / 100) * circumference}
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                    />
+                  </svg>
+                  <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-bold">{progress}%</span>
+                </div>
+              )}
+              <button onClick={() => setShowModal(true)}
+                className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 border border-white/30 flex items-center justify-center text-white text-xl font-bold transition-colors active:scale-95">
+                +
               </button>
-            )}
-            <button onClick={() => setShowModal(true)}
-              className="bg-blue-600 text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition-transform shadow-sm">
-              + הוסף
-            </button>
+            </div>
           </div>
-        </div>
 
-        {/* AI Smart Input */}
-        <div className="mb-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-base">✨</span>
-            <span className="text-xs font-bold text-gray-500 dark:text-gray-400">הוסף בעברית חופשית</span>
-          </div>
-          <div className="flex gap-2">
-            <input
-              value={aiText}
-              onChange={e => setAiText(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAiAdd()}
-              placeholder="עוגת גבינה, ארוחת שישי, ניקיון הבית..."
-              className="flex-1 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white placeholder:text-gray-400 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-right"
-            />
-            <button
-              onClick={handleAiAdd}
-              disabled={!aiText.trim() || aiLoading}
-              className="bg-blue-600 text-white font-bold px-4 py-2.5 rounded-xl active:scale-95 transition-transform disabled:opacity-50 shrink-0 text-sm">
-              {aiLoading ? <span className="animate-spin inline-block">⟳</span> : 'הוסף'}
-            </button>
-          </div>
-        </div>
-
-        {/* AI Toast */}
-        {aiToast && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-900 dark:bg-white dark:text-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl">
-            {aiToast}
-          </div>
-        )}
-
-        {/* Frequent quick-add carousel */}
-        {frequentChips.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 font-medium">קנינו בעבר:</p>
-            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {/* Frequent quick-add */}
+          {frequentChips.length > 0 && (
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {frequentChips.map(f => (
-                <button key={f.name}
-                  onClick={() => quickAdd(f)}
-                  className="shrink-0 flex items-center gap-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 text-xs font-semibold px-3 py-2 rounded-full shadow-sm active:scale-95 transition-transform">
+                <button key={f.name} onClick={() => quickAdd(f)}
+                  className="shrink-0 flex items-center gap-1.5 bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors active:scale-95">
                   <span>{getItemEmoji(f.name, f.category)}</span>
                   <span>{f.name}</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-5">
-          {[['all', 'הכל'], ['pending', '🛒 נותר'], ['done', '✅ נקנה']].map(([v, label]) => (
-            <button key={v} onClick={() => setFilter(v)}
-              className={`px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${filter === v ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
-              {label}
-            </button>
-          ))}
+          )}
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-16"><span className="text-3xl animate-pulse">🛒</span></div>
-        ) : visible.length === 0 ? (
-          <EmptyState filter={filter} onAdd={() => setShowModal(true)} />
-        ) : (
-          <div className="space-y-5 pb-24">
-            {grouped.map(({ aisle, label, emoji, items: aisleItems }) => (
-              <section key={aisle}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-base">{emoji}</span>
-                  <h3 className="text-sm font-bold text-gray-500 dark:text-gray-400">{label}</h3>
-                  <span className="text-xs text-gray-400">({aisleItems.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {aisleItems.map(item => (
-                    <SwipeableItem key={item.id} item={item}
-                      onToggle={() => toggle(item)}
-                      onDelete={() => remove(item.id)}
-                      onAdjustQty={(d) => adjustQty(item.id, d)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+        {/* AI Toast */}
+        {aiToast && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl">
+            {aiToast}
           </div>
         )}
+
+        <div className="px-4">
+          {/* Filter + clear row */}
+          <div className="flex items-center gap-2 py-3">
+            <div className="flex gap-1.5 flex-1">
+              {[['all','הכל'],['pending','נותר'],['done','נקנה']].map(([v,label]) => (
+                <button key={v} onClick={() => setFilter(v)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${filter===v ? 'bg-blue-600 text-white shadow-sm' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700'}`}>
+                  {label} {v==='all'&&items.length>0?`(${items.length})`:v==='pending'&&pendingCount>0?`(${pendingCount})`:v==='done'&&doneCount>0?`(${doneCount})`:''}
+                </button>
+              ))}
+            </div>
+            {doneCount > 0 && (
+              <button onClick={clearDone}
+                className="text-xs text-red-500 font-semibold px-2.5 py-1.5 rounded-full border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                נקה ✓
+              </button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-16"><span className="text-3xl animate-pulse">🛒</span></div>
+          ) : visible.length === 0 ? (
+            <EmptyState filter={filter} onAdd={() => setShowModal(true)} />
+          ) : (
+            <div className="space-y-4 pb-28">
+              {grouped.map(({ aisle, label, emoji, items: aisleItems }) => (
+                <section key={aisle}>
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <span className="text-sm">{emoji}</span>
+                    <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</span>
+                    <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                    <span className="text-xs text-gray-400">{aisleItems.length}</span>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden border border-gray-100 dark:border-gray-700">
+                    {aisleItems.map((item, idx) => (
+                      <div key={item.id}>
+                        <SwipeableItem item={item}
+                          onToggle={() => toggle(item)}
+                          onDelete={() => remove(item.id)}
+                          onAdjustQty={(d) => adjustQty(item.id, d)}
+                        />
+                        {idx < aisleItems.length - 1 && (
+                          <div className="mx-4 h-px bg-gray-100 dark:bg-gray-700" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
 
       {showModal && (
@@ -339,21 +342,21 @@ function SwipeableItem({ item, onToggle, onDelete, onAdjustQty }) {
   const pct = Math.min(Math.abs(dx) / THRESHOLD, 1)
 
   return (
-    <div className="relative rounded-2xl overflow-hidden">
+    <div className="relative overflow-hidden">
       {/* Right reveal: done */}
-      <div className={`absolute inset-0 rounded-2xl flex items-center pr-4 transition-opacity ${revealRight ? 'opacity-100' : 'opacity-0'}`}
-        style={{ background: `rgba(34,197,94,${pct * 0.85})` }}>
-        <span className="text-white text-xl font-bold">✓ נקנה</span>
+      <div className={`absolute inset-0 flex items-center pr-4 transition-opacity ${revealRight ? 'opacity-100' : 'opacity-0'}`}
+        style={{ background: `rgba(34,197,94,${pct * 0.9})` }}>
+        <span className="text-white text-sm font-bold">✓ נקנה</span>
       </div>
       {/* Left reveal: delete */}
-      <div className={`absolute inset-0 rounded-2xl flex items-center justify-end pl-4 transition-opacity ${revealLeft ? 'opacity-100' : 'opacity-0'}`}
-        style={{ background: `rgba(239,68,68,${pct * 0.85})` }}>
-        <span className="text-white text-xl font-bold">מחק 🗑️</span>
+      <div className={`absolute inset-0 flex items-center justify-end pl-4 transition-opacity ${revealLeft ? 'opacity-100' : 'opacity-0'}`}
+        style={{ background: `rgba(239,68,68,${pct * 0.9})` }}>
+        <span className="text-white text-sm font-bold">מחק 🗑️</span>
       </div>
 
-      {/* Card */}
+      {/* Row */}
       <div
-        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-sm touch-pan-y select-none transition-opacity ${item.done ? 'opacity-60' : ''}`}
+        className={`relative bg-white dark:bg-gray-800 touch-pan-y select-none ${item.done ? 'opacity-50' : ''}`}
         style={{ transform: `translateX(${dx}px)`, transition: swiping ? 'none' : 'transform 0.25s ease' }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}

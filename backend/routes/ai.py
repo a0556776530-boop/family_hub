@@ -25,8 +25,9 @@ try:
 except Exception:
     _tavily_client = None
 
-MODEL_PRIMARY  = 'llama-3.1-8b-instant'
-MODEL_FALLBACK = 'llama-3.3-70b-versatile'
+MODEL_PRIMARY  = 'llama-3.3-70b-versatile'   # 100K tokens/day — full power + internet
+MODEL_FALLBACK = 'llama-3.1-8b-instant'        # 500K tokens/day — full power + internet
+MODEL_BASIC    = 'gemma2-9b-it'                 # separate limit  — no internet, app-only
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -548,6 +549,7 @@ def ai_chat():
         return _groq_client.chat.completions.create(model=model, **kwargs)
 
     def _call_with_fallback(**kwargs):
+        # Try full models first (with all tools including web_search)
         for model in (MODEL_PRIMARY, MODEL_FALLBACK):
             try:
                 return _call(model, **kwargs), model
@@ -555,7 +557,16 @@ def ai_chat():
                 if 'rate_limit' in str(e).lower() or '429' in str(e):
                     continue
                 raise
-        raise Exception('כל המודלים הגיעו לגבול היומי — נסה מחר')
+        # Last resort: basic model without web_search (saves tokens, still controls app)
+        try:
+            basic_kwargs = {**kwargs}
+            if 'tools' in basic_kwargs:
+                basic_kwargs['tools'] = [t for t in basic_kwargs['tools'] if t['function']['name'] != 'web_search']
+            return _call(MODEL_BASIC, **basic_kwargs), MODEL_BASIC
+        except Exception as e:
+            if 'rate_limit' in str(e).lower() or '429' in str(e):
+                raise Exception('הגענו לגבול היומי של כל המודלים — נסה שוב מחר בבוקר 🌅')
+            raise
 
     try:
         response, used_model = _call_with_fallback(
