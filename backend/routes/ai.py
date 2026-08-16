@@ -77,7 +77,6 @@ def _call_gemini(text):
 
 
 @ai_bp.route('/models', methods=['GET'])
-@require_auth
 def list_models():
     models = _list_available_models()
     return jsonify({'models': models, 'key_set': bool(_GEMINI_KEY)}), 200
