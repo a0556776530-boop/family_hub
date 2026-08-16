@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import requests as _requests
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone
 from app import mongo
@@ -8,47 +9,56 @@ from utils.jwt_utils import require_auth
 
 ai_bp = Blueprint('ai', __name__)
 
-try:
-    from groq import Groq
-    _GROQ_KEY = os.environ.get('GROQ_API_KEY', '')
-    if _GROQ_KEY:
-        _groq_client = Groq(api_key=_GROQ_KEY)
-        _AI_AVAILABLE = True
-    else:
-        _AI_AVAILABLE = False
-except Exception:
-    _AI_AVAILABLE = False
+_GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
+_AI_AVAILABLE = bool(_GEMINI_KEY)
+
+_MODELS_TO_TRY = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-8b',
+    'gemini-pro',
+]
 
 SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפחתית ישראלית.
 
-כשהמשתמש מזכיר מתכון ספציפי (כמו "עוגת גבינה", "לזניה", "פסטה בולונז" וכדומה):
+כשהמשתמש מזכיר מתכון ספציפי (כמו "עוגת גבינה", "לזניה", "פסטה בולונז"):
 - זהה את המתכון הפופולרי הקלאסי
 - ספק את המצרכים המדויקים עם כמויות ריאליות לארוחה משפחתית (4-6 מנות)
 
-כשהמשתמש מתאר ארוחה כללית (כמו "ארוחת שישי", "ברביקיו", "ארוחת בוקר"):
-- ספק רשימת קניות מלאה ומעשית לאותה ארוחה
+כשהמשתמש מתאר ארוחה כללית (כמו "ארוחת שישי", "ברביקיו"):
+- ספק רשימת קניות מלאה ומעשית
 
 כשהמשתמש מתאר צורך כללי (כמו "ניקיון הבית", "טיול לאילת", "ילד חולה"):
 - ספק את המוצרים הרלוונטיים ביותר
 
-כללים:
-- שמות מוצרים תמיד בעברית
-- כמויות ריאליות ומדויקות
-- מוצרים שקיימים בסופר ישראלי רגיל (רמי לוי, שופרסל, ויקטורי)
-- החזר JSON בלבד — ללא טקסט, הסברים או markdown
+החזר JSON בלבד — ללא טקסט, הסברים או markdown.
+פורמט: [{"name":"שם בעברית","category":"מזון","quantity":1,"unit":""}]
+קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר"""
 
-פורמט מדויק:
-[{"name":"שם המוצר","category":"מזון","quantity":500,"unit":"גר"}]
 
-קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר
-יחידות: גר, קג, מל, ל, יח, אריזה, כוס, כף, כפית"""
+def _call_gemini(text):
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
+    }
+    for model in _MODELS_TO_TRY:
+        for api_ver in ('v1beta', 'v1'):
+            url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{model}:generateContent?key={_GEMINI_KEY}"
+            try:
+                r = _requests.post(url, json=payload, timeout=30)
+                if r.status_code == 200:
+                    return r.json()['candidates'][0]['content']['parts'][0]['text']
+            except Exception:
+                continue
+    raise RuntimeError('no working gemini model found')
 
 
 @ai_bp.route('/shopping', methods=['POST'])
 @require_auth
 def ai_shopping():
     if not _AI_AVAILABLE:
-        return jsonify({'error': 'ai_unavailable', 'message': 'שירות ה-AI אינו מופעל. יש להגדיר GROQ_API_KEY.'}), 503
+        return jsonify({'error': 'ai_unavailable', 'message': 'יש להגדיר GEMINI_API_KEY.'}), 503
 
     user = request.current_user
     if not user.get('family_id'):
@@ -58,21 +68,9 @@ def ai_shopping():
     text = (data.get('text') or '').strip()
     if not text:
         return jsonify({'error': 'missing_text'}), 400
-    if len(text) > 500:
-        return jsonify({'error': 'too_long'}), 400
 
     try:
-        completion = _groq_client.chat.completions.create(
-            model='llama-3.1-8b-instant',
-            messages=[
-                {'role': 'system', 'content': SYSTEM_PROMPT},
-                {'role': 'user', 'content': text},
-            ],
-            temperature=0.3,
-            max_tokens=1024,
-        )
-        raw = completion.choices[0].message.content.strip()
-
+        raw = _call_gemini(text).strip()
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
 
@@ -108,6 +106,6 @@ def ai_shopping():
         return jsonify({'count': len(docs), 'items': [d['name'] for d in docs]}), 200
 
     except (json.JSONDecodeError, ValueError):
-        return jsonify({'error': 'parse_error', 'message': 'לא הצלחתי לפרש את הבקשה, נסה שוב'}), 422
+        return jsonify({'error': 'parse_error', 'message': 'לא הצלחתי לפרש, נסה שוב'}), 422
     except Exception as e:
         return jsonify({'error': 'ai_error', 'message': str(e)}), 500
