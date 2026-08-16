@@ -25,8 +25,8 @@ try:
 except Exception:
     _tavily_client = None
 
-MODEL_PRIMARY  = 'llama-3.3-70b-versatile'
-MODEL_FALLBACK = 'llama-3.1-8b-instant'
+MODEL_PRIMARY  = 'llama-3.1-8b-instant'
+MODEL_FALLBACK = 'llama-3.3-70b-versatile'
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -548,12 +548,14 @@ def ai_chat():
         return _groq_client.chat.completions.create(model=model, **kwargs)
 
     def _call_with_fallback(**kwargs):
-        try:
-            return _call(MODEL_PRIMARY, **kwargs), MODEL_PRIMARY
-        except Exception as e:
-            if 'rate_limit' in str(e).lower() or '429' in str(e):
-                return _call(MODEL_FALLBACK, **kwargs), MODEL_FALLBACK
-            raise
+        for model in (MODEL_PRIMARY, MODEL_FALLBACK):
+            try:
+                return _call(model, **kwargs), model
+            except Exception as e:
+                if 'rate_limit' in str(e).lower() or '429' in str(e):
+                    continue
+                raise
+        raise Exception('כל המודלים הגיעו לגבול היומי — נסה מחר')
 
     try:
         response, used_model = _call_with_fallback(
