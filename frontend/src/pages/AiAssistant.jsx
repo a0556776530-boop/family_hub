@@ -33,6 +33,7 @@ function TypingIndicator() {
 function ActionBadges({ actions }) {
   if (!actions?.length) return null
   const map = {
+    web_search:               (r) => r?.results?.length > 0 ? `🔍 ${r.results.length} תוצאות מהאינטרנט` : null,
     add_shopping_items:       (r) => r?.added > 0 ? `🛒 ${r.added} פריטים נוספו לקניות` : null,
     delete_shopping_item:     (r) => r?.deleted > 0 ? `🗑️ נמחק מהקניות` : null,
     toggle_shopping_done:     (r) => r?.updated > 0 ? `✔️ עודכן ברשימה` : null,

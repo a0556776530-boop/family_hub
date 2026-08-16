@@ -18,6 +18,13 @@ except Exception:
     _groq_client = None
     _AI_AVAILABLE = False
 
+try:
+    from tavily import TavilyClient
+    _TAVILY_KEY = os.environ.get('TAVILY_API_KEY', '')
+    _tavily_client = TavilyClient(api_key=_TAVILY_KEY) if _TAVILY_KEY else None
+except Exception:
+    _tavily_client = None
+
 MODEL = 'llama-3.3-70b-versatile'
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -25,6 +32,29 @@ VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורי�
 # ─── Tools ─────────────────────────────────────────────────────────────────
 
 TOOLS = [
+    # ── Web Search ────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "מחפש באינטרנט ומחזיר תוצאות עם קישורים. השתמש כשהמשתמש מבקש מתכון, מידע עדכני, המלצות, חדשות, או כל שאלה שדורשת מידע מהאינטרנט.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "שאילתת החיפוש — כתוב בעברית או באנגלית לפי הנושא"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "מספר תוצאות (ברירת מחדל 5)"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+
     # ── Shopping ──────────────────────────────────────────────────────────
     {
         "type": "function",
@@ -251,6 +281,31 @@ def execute_tool(name, args, user):
     family_id = user['family_id']
     now = datetime.now(timezone.utc)
 
+    # ── Web Search ────────────────────────────────────────────────────────
+    if name == 'web_search':
+        if not _tavily_client:
+            return {'error': 'חיפוש אינטרנט לא זמין — TAVILY_API_KEY חסר'}
+        query = str(args.get('query', '')).strip()
+        max_r = min(int(args.get('max_results', 5)), 8)
+        if not query:
+            return {'error': 'missing query'}
+        try:
+            resp = _tavily_client.search(query, max_results=max_r, include_answer=True)
+            results = []
+            for r in resp.get('results', []):
+                results.append({
+                    'title':   r.get('title', ''),
+                    'url':     r.get('url', ''),
+                    'content': r.get('content', '')[:500],
+                })
+            return {
+                'query':   query,
+                'answer':  resp.get('answer', ''),
+                'results': results,
+            }
+        except Exception as e:
+            return {'error': str(e)}
+
     # ── Shopping ──────────────────────────────────────────────────────────
     if name == 'add_shopping_items':
         docs = []
@@ -414,12 +469,12 @@ def execute_tool(name, args, user):
 SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה — כמו Grok או Gemini — אבל מותאם לעברית ולמשפחה הישראלית.
 
 אתה יכול לעזור בכל דבר:
-• לענות על כל שאלה — מדע, היסטוריה, טכנולוגיה, בריאות, משפט, כלכלה, ספורט
-• מתכונים מפורטים עם כמויות ושלבים
-• תכנון טיולים ורשימות ציוד
+• לחפש באינטרנט ולהביא תוצאות אמיתיות עם קישורים (השתמש ב-web_search)
+• מתכונים — תמיד חפש באינטרנט ותחזיר קישורים לאתרי מתכונים
+• חדשות, מזג אוויר, מחירים, מידע עדכני — חפש באינטרנט
+• תכנון טיולים, המלצות מסעדות, אטרקציות — חפש באינטרנט
 • עצות לחינוך ילדים, זוגיות, עבודה
-• ניתוח, כתיבה, תרגום, הסבר מושגים
-• כל שאלה שתבוא — תענה עליה בצורה מלאה ומועילה
+• ניתוח, כתיבה, תרגום, הסבר מושגים — ענה מהידע שלך
 
 ובנוסף, יש לך שליטה מלאה על האפליקציה המשפחתית:
 🛒 קניות — הוספה, מחיקה, סימון כנקנה, ניקוי, צפייה
@@ -442,7 +497,10 @@ SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה �
 סגנון:
 - עברית טבעית, חמה, בוטחת
 - תשובות מלאות כשצריך, קצרות כשמספיק
-- אל תמציא פריטים שלא ביקשו
+- אין נושאים אסורים — ענה על הכל בפתיחות ובחכמה
+- אל תמציא פריטים שלא ביקשו לקניות
+
+כשמביא תוצאות מהאינטרנט — הצג קישורים בפורמט: [שם האתר](URL)
 
 תאריך היום: {today}"""
 

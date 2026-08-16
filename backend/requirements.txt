@@ -13,3 +13,4 @@ cloudinary
 pywebpush==1.14.1
 webauthn
 groq
+tavily-python
