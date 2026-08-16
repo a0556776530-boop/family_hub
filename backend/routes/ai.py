@@ -99,8 +99,14 @@ def ai_shopping():
 
     try:
         raw = _call_gemini(text).strip()
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
+
+        # Try to extract JSON array from anywhere in the response
+        match = re.search(r'\[[\s\S]*\]', raw)
+        if match:
+            raw = match.group(0)
+        else:
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw.strip())
 
         items_data = json.loads(raw)
         if not isinstance(items_data, list):
