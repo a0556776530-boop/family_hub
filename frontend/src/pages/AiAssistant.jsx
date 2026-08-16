@@ -13,6 +13,161 @@ const SUGGESTIONS = [
   { icon: '✅', text: 'מה המשימות הפתוחות?' },
 ]
 
+// ─── Zero-token Hebrew intent detection ──────────────────────────────────────
+// Runs entirely in the browser — no server, no tokens, no internet needed.
+// Understands natural Hebrew phrasing by matching word-families, not exact words.
+
+const ADD_VERBS = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/
+const SHOW_VERBS = /(?:תראה|הראה|הצג|תציג|תפרט|מה\s+(?:יש|המ)|הצג|מהי|רוצה\s+לראות|רוצה\s+לדעת)/
+const DELETE_VERBS = /(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/
+const DONE_VERBS = /(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/
+const WANT_ADD = /(?:רוצה\s+(?:ש)?(?:תוסיף|להוסיף|להכניס|לצור)|אפשר\s+(?:ש)?(?:תוסיף|להוסיף)|אני\s+(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|בוא\s+(?:ת)?(?:וסיף|כניס|צור))/
+
+const SHOP_CTX = /(?:לקניות|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות)/
+const TASK_CTX = /(?:משימ[הות]|תזכורת|ל(?:עשות|לעשות)|לרשימת\s+המשימות|למשימות|הרשימה\s+שלי)/
+
+// Strip non-content words to extract the entity
+function stripNoise(s) {
+  return s
+    .replace(/(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/gi, '')
+    .replace(/(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/gi, '')
+    .replace(/(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/gi, '')
+    .replace(/(?:רוצה|אפשר|בוא|יכול|יכולה|שתוסיף|שתכניס|שתצור|שתמחק|ש)/gi, '')
+    .replace(/(?:משימ[הות]|תזכורת|למשימות|לרשימת\s+המשימות)/gi, '')
+    .replace(/(?:לקניות|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|בקניות|ברשימ[הת]|לקנות)/gi, '')
+    .replace(/(?:^|\s)(?:את|לי|ה|ל|מ|ב|כ|ו|אני|אתה|את|הם|הן|אנחנו|בבקשה|נא|גם|עוד)\s/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[,.\-:]+|[,.\-:?!]+$/g, '')
+    .trim()
+}
+
+function detectIntent(msg) {
+  const m = msg.trim()
+  const hasAdd  = ADD_VERBS.test(m) || WANT_ADD.test(m)
+  const hasShow = SHOW_VERBS.test(m) || /^(?:מה|כמה|מי|הצג|רשימ)/.test(m)
+  const hasDel  = DELETE_VERBS.test(m)
+  const hasDone = DONE_VERBS.test(m)
+  const isShop  = SHOP_CTX.test(m)
+  const isTask  = TASK_CTX.test(m)
+
+  // ── Add task ──────────────────────────────────────────────────────────────
+  if ((hasAdd || hasDone === false) && isTask && !isShop) {
+    // Extract title: everything after "משימה/תזכורת" keyword
+    let title = m.replace(/^.*?(?:משימ[הות]|תזכורת)\s*/i, '').trim()
+    if (!title || title.length < 2) title = stripNoise(m)
+    if (title && title.length > 1) return { intent: 'add_task', title }
+  }
+
+  // ── Add shopping ──────────────────────────────────────────────────────────
+  if (hasAdd && isShop) {
+    // Extract items: content between verb and shop context word
+    let raw = m
+    // Remove everything after shop context word
+    raw = raw.replace(/\s*(?:לקניות|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|לקנות).*/i, '')
+    // Remove verb and noise from start
+    raw = stripNoise(raw)
+    const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
+    if (items.length) return { intent: 'add_shopping', items }
+  }
+
+  // ── "צריך לקנות X" / "קנה X" — shopping without explicit add verb ────────
+  if (/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!\s*ל(?:עשות|לעשות))/.test(m) && (isShop || !isTask)) {
+    let raw = m.replace(/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?/i, '').trim()
+    raw = raw.replace(SHOP_CTX, '').trim()
+    raw = stripNoise(raw)
+    const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
+    if (items.length > 0 && items[0].length > 1) return { intent: 'add_shopping', items }
+  }
+
+  // ── Show tasks ────────────────────────────────────────────────────────────
+  if (isTask && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) {
+    return { intent: 'get_tasks' }
+  }
+  if (/(?:מה\s+(?:ה)?משימות|משימות\s+פתוחות|כל\s+המשימות)/.test(m)) {
+    return { intent: 'get_tasks' }
+  }
+
+  // ── Show shopping ──────────────────────────────────────────────────────────
+  if (isShop && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) {
+    return { intent: 'get_shopping' }
+  }
+  if (/(?:מה\s+(?:יש\s+)?(?:ב)?(?:ה)?קניות|מה\s+(?:יש\s+)?ברשימ)/.test(m)) {
+    return { intent: 'get_shopping' }
+  }
+
+  // ── Delete task ────────────────────────────────────────────────────────────
+  if (hasDel && isTask) {
+    const title = stripNoise(m)
+    if (title && title.length > 1) return { intent: 'delete_task', title }
+  }
+
+  // ── Complete task ──────────────────────────────────────────────────────────
+  if (hasDone && isTask) {
+    const title = stripNoise(m)
+    if (title && title.length > 1) return { intent: 'complete_task', title }
+  }
+
+  return null
+}
+
+async function executeIntent(intent) {
+  switch (intent.intent) {
+    case 'add_task': {
+      const res = await api.post('/api/tasks/', { title: intent.title, priority: 'medium' })
+      return {
+        reply: `✅ נוצרה משימה: **${intent.title}**`,
+        actions: [{ tool: 'create_task', result: { created: true } }],
+      }
+    }
+    case 'add_shopping': {
+      const added = []
+      for (const name of intent.items) {
+        try { await api.post('/api/shopping/', { name }); added.push(name) } catch {}
+      }
+      if (!added.length) return null
+      return {
+        reply: `🛒 נוסף לקניות: ${added.join(', ')}`,
+        actions: [{ tool: 'add_shopping_items', result: { added: added.length, items: added } }],
+      }
+    }
+    case 'get_tasks': {
+      const res = await api.get('/api/tasks/')
+      const tasks = res.data?.tasks || []
+      if (!tasks.length) return { reply: 'אין משימות פתוחות כרגע 🎉', actions: [] }
+      const lines = tasks.slice(0, 10).map(t => `• ${t.title}`).join('\n')
+      return { reply: `📋 **משימות פתוחות (${tasks.length}):**\n${lines}`, actions: [] }
+    }
+    case 'get_shopping': {
+      const res = await api.get('/api/shopping/')
+      const items = res.data?.items || []
+      if (!items.length) return { reply: 'רשימת הקניות ריקה 🛒', actions: [] }
+      const lines = items.slice(0, 15).map(i => `${i.done ? '✅' : '•'} ${i.name}`).join('\n')
+      return { reply: `🛒 **רשימת קניות (${items.length} פריטים):**\n${lines}`, actions: [] }
+    }
+    case 'delete_task': {
+      const res = await api.get('/api/tasks/')
+      const tasks = res.data?.tasks || []
+      const match = tasks.find(t => t.title.includes(intent.title) || intent.title.includes(t.title))
+      if (!match) return { reply: `לא מצאתי משימה בשם "${intent.title}"`, actions: [] }
+      await api.delete(`/api/tasks/${match._id}`)
+      return { reply: `🗑️ המשימה "${match.title}" נמחקה.`, actions: [{ tool: 'delete_task', result: { deleted: 1 } }] }
+    }
+    case 'complete_task': {
+      const res = await api.get('/api/tasks/')
+      const tasks = res.data?.tasks || []
+      const match = tasks.find(t => t.title.includes(intent.title) || intent.title.includes(t.title))
+      if (!match) return { reply: `לא מצאתי משימה בשם "${intent.title}"`, actions: [] }
+      await api.patch(`/api/tasks/${match._id}/complete`)
+      return { reply: `🎉 משימה הושלמה: **${match.title}**`, actions: [{ tool: 'complete_task', result: { completed: true } }] }
+    }
+    default:
+      return null
+  }
+}
+
+// ─── UI Components ─────────────────────────────────────────────────────────
+
 function TypingDots() {
   return (
     <div className="flex items-end gap-3 px-4 py-2" dir="rtl">
@@ -115,11 +270,24 @@ export default function AiAssistant() {
     setMessages(prev => [...prev, { role: 'user', content: msg }])
     setLoading(true)
 
-    const history = messages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({ role: m.role, content: m.content }))
-
     try {
+      // ── Zero-token path: detect intent in browser, call API directly ──────
+      const intent = detectIntent(msg)
+      if (intent) {
+        const result = await executeIntent(intent)
+        if (result) {
+          setMessages(prev => [...prev, { role: 'assistant', content: result.reply, actions: result.actions }])
+          setLoading(false)
+          setTimeout(() => inputRef.current?.focus(), 50)
+          return
+        }
+      }
+
+      // ── AI path: only for questions / complex requests ───────────────────
+      const history = messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({ role: m.role, content: m.content }))
+
       const res = await api.post('/api/ai/chat', { message: msg, history })
       setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply, actions: res.data.actions || [] }])
     } catch (err) {
