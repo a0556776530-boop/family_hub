@@ -25,7 +25,9 @@ try:
 except Exception:
     _tavily_client = None
 
-MODEL = 'llama-3.3-70b-versatile'
+MODEL_PRIMARY  = 'llama-3.3-70b-versatile'
+MODEL_FALLBACK = 'llama-3.1-8b-instant'
+MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
 
@@ -542,9 +544,19 @@ def ai_chat():
 
     actions = []
 
+    def _call(model, **kwargs):
+        return _groq_client.chat.completions.create(model=model, **kwargs)
+
+    def _call_with_fallback(**kwargs):
+        try:
+            return _call(MODEL_PRIMARY, **kwargs), MODEL_PRIMARY
+        except Exception as e:
+            if 'rate_limit' in str(e).lower() or '429' in str(e):
+                return _call(MODEL_FALLBACK, **kwargs), MODEL_FALLBACK
+            raise
+
     try:
-        response = _groq_client.chat.completions.create(
-            model=MODEL,
+        response, used_model = _call_with_fallback(
             messages=messages,
             tools=TOOLS,
             tool_choice='auto',
@@ -587,8 +599,7 @@ def ai_chat():
                     'content':      json.dumps(result, ensure_ascii=False),
                 })
 
-            final = _groq_client.chat.completions.create(
-                model=MODEL,
+            final, _ = _call_with_fallback(
                 messages=messages,
                 temperature=0.6,
                 max_tokens=2048,

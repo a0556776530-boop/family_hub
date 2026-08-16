@@ -138,7 +138,9 @@ export default function AiAssistant() {
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: err?.response?.data?.message || 'משהו השתבש, נסה שוב.',
+        content: err?.response?.data?.message?.includes('rate_limit') || err?.response?.data?.message?.includes('Rate limit')
+        ? 'הגענו לגבול היומי של ה-AI — ננסה במודל מהיר יותר. נסה שוב עוד שניה.'
+        : err?.response?.data?.message || 'משהו השתבש, נסה שוב.',
         actions: [],
       }])
     } finally {
