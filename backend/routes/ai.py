@@ -635,6 +635,11 @@ def ai_chat():
 
     data    = request.get_json() or {}
     message = (data.get('message') or '').strip()
+
+    # Fast path: keyword parser runs FIRST — zero tokens for simple commands
+    kw_reply, kw_actions = _keyword_parse(message, user)
+    if kw_reply:
+        return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
     history = data.get('history') or []
 
     if not message:
