@@ -64,7 +64,7 @@ def ai_shopping():
 
     try:
         response = _genai_client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=f"{SYSTEM_PROMPT}\n\nבקשת המשתמש: {text}"
         )
         raw = response.text.strip()
