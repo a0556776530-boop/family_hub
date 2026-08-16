@@ -521,56 +521,69 @@ SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה �
 
 def _keyword_parse(message, user):
     """Parse simple Hebrew commands and execute them without an LLM call."""
-    msg = message.strip()
+    msg = message.strip().rstrip('?!.')
 
     def _norm(s):
-        return re.sub(r'\s+', ' ', s).strip()
+        return re.sub(r'\s+', ' ', s).strip().rstrip('?!.')
+
+    ADD_WORDS  = r'(?:תוסיף|הוסף|צור|תצור|תכניס|הכנס|להוסיף|לצור|יכול\s+להוסיף|אפשר\s+להוסיף|רוצה\s+להוסיף)'
+    DEL_WORDS  = r'(?:תמחק|מחק|הסר|למחוק|להסיר)'
+    DONE_WORDS = r'(?:סיימתי|סמן|תסמן|השלם|הושלם|בוצע)'
 
     # ── Create task ──────────────────────────────────────────────────────────
     task_add = re.search(
-        r'(?:תוסיף|הוסף|צור|תצור|תכניס|הכנס)\s+(?:לי\s+)?משימה[:\s]+(.+)',
+        ADD_WORDS + r'\s+(?:לי\s+)?משימה\s*[:\-]?\s*(.+)',
         msg, re.IGNORECASE
     )
+    if not task_add:
+        # "אתה יכול להוסיף משימה לקנות נעלים?"
+        if re.search(ADD_WORDS, msg, re.IGNORECASE) and 'משימה' in msg:
+            task_add = re.search(r'משימה\s+(.+)', msg, re.IGNORECASE)
     if task_add:
         title = _norm(task_add.group(1))
-        if title:
+        if title and len(title) > 1:
             result = execute_tool('create_task', {'title': title}, user)
             if result.get('created'):
                 return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
 
     # ── Delete task ──────────────────────────────────────────────────────────
-    task_del = re.search(
-        r'(?:תמחק|מחק|הסר)\s+(?:את\s+)?(?:המשימה\s+)?(.+?)(?:\s+מ(?:ה)?משימות?)?$',
-        msg, re.IGNORECASE
-    )
-    if task_del and any(w in msg for w in ['משימה', 'משימות']):
-        title = _norm(task_del.group(1).replace('משימה', '').replace('משימות', ''))
-        if title:
-            result = execute_tool('delete_task', {'search_title': title}, user)
-            if result.get('deleted', 0) > 0:
-                return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
+    if re.search(DEL_WORDS, msg, re.IGNORECASE) and 'משימ' in msg:
+        task_del = re.search(
+            DEL_WORDS + r'\s+(?:את\s+)?(?:ה?משימה\s+)?(.+?)(?:\s+מ(?:ה)?משימות?)?$',
+            msg, re.IGNORECASE
+        )
+        if task_del:
+            title = _norm(task_del.group(1).replace('משימה', '').replace('משימות', ''))
+            if title and len(title) > 1:
+                result = execute_tool('delete_task', {'search_title': title}, user)
+                if result.get('deleted', 0) > 0:
+                    return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
 
     # ── Complete task ─────────────────────────────────────────────────────────
     task_done = re.search(
-        r'(?:סיימתי|סמן|תסמן)\s+(?:את\s+)?(.+?)\s+(?:כבוצע|כהושלם|הושלם)',
+        r'(?:' + DONE_WORDS + r')\s+(?:את\s+)?(.+?)\s+(?:כבוצע|כהושלם|הושלם)',
         msg, re.IGNORECASE
     )
+    if not task_done:
+        task_done = re.search(
+            DONE_WORDS + r'\s+(?:את\s+)?(?:ה?משימה\s+)?(.+)',
+            msg, re.IGNORECASE
+        )
     if task_done:
-        title = _norm(task_done.group(1))
-        if title:
+        title = _norm(task_done.group(1).replace('כבוצע','').replace('הושלם',''))
+        if title and len(title) > 1:
             result = execute_tool('complete_task', {'search_title': title}, user)
             if result.get('completed'):
                 return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
 
     # ── Add shopping items ────────────────────────────────────────────────────
     shop_add = re.search(
-        r'(?:תוסיף|הוסף)\s+(.+?)\s+(?:לקניות|לרשימת\s+הקניות|לרשימה)',
+        r'(?:תוסיף|הוסף|להוסיף)\s+(?:את\s+)?(.+?)\s+(?:לקניות|לרשימת\s+הקניות|לרשימה)',
         msg, re.IGNORECASE
     )
     if shop_add:
         raw = _norm(shop_add.group(1))
-        # split by , / ו / spaces between items
-        names = [n.strip().strip('את').strip() for n in re.split(r'[,וְ]', raw) if n.strip()]
+        names = [n.strip().strip('את ') for n in re.split(r'[,וְ]', raw) if n.strip()]
         names = [n for n in names if len(n) > 1]
         if names:
             result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in names]}, user)
