@@ -517,6 +517,87 @@ SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה �
 תאריך היום: {today}"""
 
 
+# ─── Keyword fallback (works without any LLM tokens) ───────────────────────
+
+def _keyword_parse(message, user):
+    """Parse simple Hebrew commands and execute them without an LLM call."""
+    msg = message.strip()
+
+    def _norm(s):
+        return re.sub(r'\s+', ' ', s).strip()
+
+    # ── Create task ──────────────────────────────────────────────────────────
+    task_add = re.search(
+        r'(?:תוסיף|הוסף|צור|תצור|תכניס|הכנס)\s+(?:לי\s+)?משימה[:\s]+(.+)',
+        msg, re.IGNORECASE
+    )
+    if task_add:
+        title = _norm(task_add.group(1))
+        if title:
+            result = execute_tool('create_task', {'title': title}, user)
+            if result.get('created'):
+                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
+
+    # ── Delete task ──────────────────────────────────────────────────────────
+    task_del = re.search(
+        r'(?:תמחק|מחק|הסר)\s+(?:את\s+)?(?:המשימה\s+)?(.+?)(?:\s+מ(?:ה)?משימות?)?$',
+        msg, re.IGNORECASE
+    )
+    if task_del and any(w in msg for w in ['משימה', 'משימות']):
+        title = _norm(task_del.group(1).replace('משימה', '').replace('משימות', ''))
+        if title:
+            result = execute_tool('delete_task', {'search_title': title}, user)
+            if result.get('deleted', 0) > 0:
+                return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
+
+    # ── Complete task ─────────────────────────────────────────────────────────
+    task_done = re.search(
+        r'(?:סיימתי|סמן|תסמן)\s+(?:את\s+)?(.+?)\s+(?:כבוצע|כהושלם|הושלם)',
+        msg, re.IGNORECASE
+    )
+    if task_done:
+        title = _norm(task_done.group(1))
+        if title:
+            result = execute_tool('complete_task', {'search_title': title}, user)
+            if result.get('completed'):
+                return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
+
+    # ── Add shopping items ────────────────────────────────────────────────────
+    shop_add = re.search(
+        r'(?:תוסיף|הוסף)\s+(.+?)\s+(?:לקניות|לרשימת\s+הקניות|לרשימה)',
+        msg, re.IGNORECASE
+    )
+    if shop_add:
+        raw = _norm(shop_add.group(1))
+        # split by , / ו / spaces between items
+        names = [n.strip().strip('את').strip() for n in re.split(r'[,וְ]', raw) if n.strip()]
+        names = [n for n in names if len(n) > 1]
+        if names:
+            result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in names]}, user)
+            if result.get('added', 0) > 0:
+                return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
+
+    # ── Get tasks ─────────────────────────────────────────────────────────────
+    if re.search(r'(?:מה\s+)?המשימות?|רשימת\s+משימות', msg, re.IGNORECASE):
+        result = execute_tool('get_tasks', {}, user)
+        tasks = result.get('tasks', [])
+        if not tasks:
+            return 'אין משימות פתוחות כרגע 🎉', []
+        lines = '\n'.join(f'• {t["title"]}' for t in tasks[:10])
+        return f'📋 **משימות פתוחות ({len(tasks)}):**\n{lines}', []
+
+    # ── Get shopping list ─────────────────────────────────────────────────────
+    if re.search(r'(?:מה\s+)?(?:יש\s+)?(?:ב)?רשימת?\s+(?:ה)?קניות|מה\s+(?:יש\s+)?(?:ב)?קניות', msg, re.IGNORECASE):
+        result = execute_tool('get_shopping_list', {}, user)
+        items = result.get('items', [])
+        if not items:
+            return 'רשימת הקניות ריקה 🛒', []
+        lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
+        return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
+
+    return None, None
+
+
 # ─── Chat endpoint ──────────────────────────────────────────────────────────
 
 @ai_bp.route('/chat', methods=['POST'])
@@ -633,8 +714,13 @@ def ai_chat():
 
     except Exception as e:
         err = str(e)
+        # Before giving up, try keyword-based parsing (no tokens needed)
+        kw_reply, kw_actions = _keyword_parse(message, user)
+        if kw_reply:
+            return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
+
         if 'גבול' in err or 'מחר' in err:
-            user_msg = err
+            user_msg = err + '\n\n💡 פקודות פשוטות עדיין עובדות: "תוסיף משימה X", "תוסיף X לקניות", "מה המשימות?"'
         elif 'rate_limit' in err.lower() or '429' in err:
             user_msg = 'הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅'
         elif 'api_key' in err.lower() or 'authentication' in err.lower():
