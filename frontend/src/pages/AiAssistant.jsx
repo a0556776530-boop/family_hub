@@ -6,12 +6,12 @@ import { useTheme } from '../context/ThemeContext'
 import { useNavigate } from 'react-router-dom'
 
 const SUGGESTIONS = [
-  { text: 'תוסיף חלב וביצים לקניות', icon: '🛒' },
-  { text: 'מה יש לנו השבוע ביומן?',   icon: '📅' },
-  { text: 'צריך חומרים לפיצה',         icon: '🍕' },
-  { text: 'תצור משימה לנקות את הסלון', icon: '🧹' },
-  { text: 'טיול לאילת — מה לקחת?',     icon: '🏖️' },
-  { text: 'מה המשימות הפתוחות?',        icon: '✅' },
+  { text: 'מה שלומך?',                       icon: '👋' },
+  { text: 'תן לי מתכון לפסטה בולונז',        icon: '🍝' },
+  { text: 'מה יש לנו השבוע ביומן?',          icon: '📅' },
+  { text: 'אני רוצה לתכנן טיול לאילת',       icon: '🏖️' },
+  { text: 'תוסיף חלב וביצים ולחם לקניות',   icon: '🛒' },
+  { text: 'תצור משימה לנקות את הסלון',       icon: '🧹' },
 ]
 
 function TypingDots() {
