@@ -25,9 +25,11 @@ try:
 except Exception:
     _tavily_client = None
 
-MODEL_PRIMARY  = 'llama-3.3-70b-versatile'   # 100K tokens/day — full power + internet
-MODEL_FALLBACK = 'llama-3.1-8b-instant'        # 500K tokens/day — full power + internet
-MODEL_BASIC    = 'llama3-8b-8192'               # separate limit  — no internet, app-only
+MODEL_PRIMARY  = 'llama-3.3-70b-versatile'              # 100K tokens/day
+MODEL_FALLBACK = 'llama-3.1-8b-instant'                 # 500K tokens/day
+MODEL_BASIC    = 'llama3-8b-8192'                       # separate 8b quota
+MODEL_EXTRA1   = 'deepseek-r1-distill-llama-70b'        # separate deepseek quota
+MODEL_EXTRA2   = 'qwen-qwq-32b'                         # separate qwen quota
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -553,7 +555,7 @@ def ai_chat():
         return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
 
     def _call_with_fallback(**kwargs):
-        # Try full models first (with all tools including web_search)
+        # Tier 1+2: full models with all tools
         for model in (MODEL_PRIMARY, MODEL_FALLBACK):
             try:
                 return _call(model, **kwargs), model
@@ -561,16 +563,18 @@ def ai_chat():
                 if _is_retryable(e):
                     continue
                 raise
-        # Last resort: basic model without web_search (saves tokens, still controls app)
-        try:
-            basic_kwargs = {**kwargs}
-            if 'tools' in basic_kwargs:
-                basic_kwargs['tools'] = [t for t in basic_kwargs['tools'] if t['function']['name'] != 'web_search']
-            return _call(MODEL_BASIC, **basic_kwargs), MODEL_BASIC
-        except Exception as e:
-            if _is_retryable(e):
-                raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
-            raise
+        # Tier 3+4+5: fallback models without web_search (app control still works)
+        no_web_kwargs = {**kwargs}
+        if 'tools' in no_web_kwargs:
+            no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
+        for model in (MODEL_BASIC, MODEL_EXTRA1, MODEL_EXTRA2):
+            try:
+                return _call(model, **no_web_kwargs), model
+            except Exception as e:
+                if _is_retryable(e):
+                    continue
+                raise
+        raise Exception('הגענו לגבול השימוש היומי בכל המודלים — נסה שוב מחר בבוקר 🌅')
 
     try:
         response, used_model = _call_with_fallback(
