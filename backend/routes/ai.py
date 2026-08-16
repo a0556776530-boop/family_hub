@@ -25,6 +25,16 @@ try:
 except Exception:
     _tavily_client = None
 
+try:
+    from openai import OpenAI as _OpenAIClient
+    _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
+    _gemini_client = _OpenAIClient(
+        api_key=_GEMINI_KEY,
+        base_url='https://generativelanguage.googleapis.com/v1beta/openai/'
+    ) if _GEMINI_KEY else None
+except Exception:
+    _gemini_client = None
+
 MODEL_PRIMARY  = 'llama-3.3-70b-versatile'              # 100K tokens/day
 MODEL_FALLBACK = 'llama-3.1-8b-instant'                 # 500K tokens/day
 MODEL_BASIC    = 'llama3-8b-8192'                       # separate 8b quota
@@ -668,7 +678,27 @@ def ai_chat():
                 if _is_retryable(e):
                     continue
                 raise
-        raise Exception('הגענו לגבול השימוש היומי בכל המודלים — נסה שוב מחר בבוקר 🌅')
+
+        # Final fallback: Gemini via OpenAI-compatible endpoint
+        if _gemini_client:
+            gemini_kwargs = {**no_web_kwargs}
+            try:
+                resp = _gemini_client.chat.completions.create(
+                    model='gemini-1.5-flash', **gemini_kwargs
+                )
+                return resp, 'gemini-1.5-flash'
+            except Exception:
+                try:
+                    # Try without tools if tools failed
+                    simple = {k: v for k, v in gemini_kwargs.items() if k != 'tools' and k != 'tool_choice'}
+                    resp = _gemini_client.chat.completions.create(
+                        model='gemini-1.5-flash', **simple
+                    )
+                    return resp, 'gemini-1.5-flash'
+                except Exception:
+                    pass
+
+        raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
     try:
         response, used_model = _call_with_fallback(
