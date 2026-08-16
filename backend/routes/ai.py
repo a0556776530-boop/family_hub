@@ -9,11 +9,33 @@ from utils.jwt_utils import require_auth
 
 ai_bp = Blueprint('ai', __name__)
 
+_PREFERRED_MODELS = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-pro',
+]
+
+def _pick_model(client):
+    try:
+        available = [m.name.replace('models/', '') for m in client.models.list()]
+        for preferred in _PREFERRED_MODELS:
+            for name in available:
+                if preferred in name:
+                    return name
+    except Exception:
+        pass
+    return _PREFERRED_MODELS[0]
+
 try:
     from google import genai as _genai_sdk
     _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
     if _GEMINI_KEY:
         _genai_client = _genai_sdk.Client(api_key=_GEMINI_KEY)
+        _GEMINI_MODEL = _pick_model(_genai_client)
         _AI_AVAILABLE = True
     else:
         _AI_AVAILABLE = False
@@ -64,7 +86,7 @@ def ai_shopping():
 
     try:
         response = _genai_client.models.generate_content(
-            model='gemini-2.5-flash',
+            model=_GEMINI_MODEL,
             contents=f"{SYSTEM_PROMPT}\n\nבקשת המשתמש: {text}"
         )
         raw = response.text.strip()
