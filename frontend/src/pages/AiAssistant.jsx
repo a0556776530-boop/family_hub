@@ -1,59 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
-import Header from '../components/layout/Header'
 import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
+import { useNavigate } from 'react-router-dom'
 
 const SUGGESTIONS = [
-  'תוסיף חלב וביצים לקניות',
-  'מה יש לנו השבוע ביומן?',
-  'תצור משימה לנקות את הסלון',
-  'צריך חומרים לפיצה',
-  'מה המשימות הפתוחות?',
-  'תוסיף ביקור אצל הרופא ביומן',
+  { text: 'תוסיף חלב וביצים לקניות', icon: '🛒' },
+  { text: 'מה יש לנו השבוע ביומן?',   icon: '📅' },
+  { text: 'צריך חומרים לפיצה',         icon: '🍕' },
+  { text: 'תצור משימה לנקות את הסלון', icon: '🧹' },
+  { text: 'טיול לאילת — מה לקחת?',     icon: '🏖️' },
+  { text: 'מה המשימות הפתוחות?',        icon: '✅' },
 ]
 
 function TypingDots() {
   return (
-    <div className="flex items-end gap-2 mb-4">
-      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-base shrink-0 shadow-sm">🤖</div>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
-        <div className="flex gap-1 items-center h-4">
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+    <div className="flex items-end gap-2 mb-3">
+      <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-base shrink-0 shadow border border-white/30">🤖</div>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 shadow-md">
+        <div className="flex gap-1.5 items-center h-4">
+          {[0, 150, 300].map(d => (
+            <span key={d} className="w-2 h-2 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+          ))}
         </div>
       </div>
     </div>
   )
 }
 
-function ActionBadge({ action }) {
-  const { tool, result } = action
-  if (result?.error) return null
-
-  if (tool === 'add_shopping_items' && result?.added > 0) {
-    return (
-      <div className="mt-1.5 inline-flex items-center gap-1.5 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 rounded-full px-3 py-1 text-xs text-green-700 dark:text-green-300">
-        🛒 הוספתי {result.added} פריטים לקניות
-      </div>
-    )
-  }
-  if (tool === 'create_event' && result?.created) {
-    return (
-      <div className="mt-1.5 inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-full px-3 py-1 text-xs text-blue-700 dark:text-blue-300">
-        📅 נוסף ליומן: {result.title}
-      </div>
-    )
-  }
-  if (tool === 'create_task' && result?.created) {
-    return (
-      <div className="mt-1.5 inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-full px-3 py-1 text-xs text-purple-700 dark:text-purple-300">
-        ✅ נוצרה משימה: {result.title}
-      </div>
-    )
-  }
-  return null
+function ActionBadges({ actions }) {
+  if (!actions?.length) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {actions.map((a, i) => {
+        const { tool, result } = a
+        if (result?.error) return null
+        if (tool === 'add_shopping_items' && result?.added > 0)
+          return <span key={i} className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-xs rounded-full px-2.5 py-1 border border-green-200 dark:border-green-700">🛒 {result.added} פריטים נוספו</span>
+        if (tool === 'create_event' && result?.created)
+          return <span key={i} className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-xs rounded-full px-2.5 py-1 border border-blue-200 dark:border-blue-700">📅 נוסף ליומן</span>
+        if (tool === 'create_task' && result?.created)
+          return <span key={i} className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs rounded-full px-2.5 py-1 border border-purple-200 dark:border-purple-700">✅ משימה נוצרה</span>
+        return null
+      })}
+    </div>
+  )
 }
 
 function Message({ msg }) {
@@ -61,8 +53,8 @@ function Message({ msg }) {
 
   if (isUser) {
     return (
-      <div className="flex justify-start mb-4">
-        <div className="max-w-[80%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm">
+      <div className="flex justify-start mb-3">
+        <div className="max-w-[78%] bg-blue-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 shadow-md">
           <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         </div>
       </div>
@@ -70,27 +62,30 @@ function Message({ msg }) {
   }
 
   return (
-    <div className="flex items-end gap-2 mb-4">
-      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-base shrink-0 shadow-sm">🤖</div>
-      <div className="max-w-[80%]">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div className="flex items-end gap-2 mb-3">
+      <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-base shrink-0 shadow border border-white/20">🤖</div>
+      <div className="max-w-[78%]">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2.5 shadow-md border border-gray-100 dark:border-gray-700">
           <p className="text-sm text-gray-800 dark:text-gray-100 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
         </div>
-        {msg.actions?.map((a, i) => <ActionBadge key={i} action={a} />)}
+        <ActionBadges actions={msg.actions} />
       </div>
     </div>
   )
 }
 
 export default function AiAssistant() {
-  const { user } = useAuth()
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const { user }         = useAuth()
+  const { dark }         = useTheme()
+  const navigate         = useNavigate()
+  const bottomRef        = useRef(null)
+  const inputRef         = useRef(null)
+  const firstName        = (user?.name || '').split(' ')[0]
 
   const [messages, setMessages] = useState([
     {
-      role: 'assistant',
-      content: `שלום ${(user?.name || '').split(' ')[0]} 👋\nאני עוזר המשפחה שלך! אני יכול לעזור לך:\n• להוסיף פריטים לקניות\n• לראות ולהוסיף אירועים ביומן\n• לנהל משימות בבית\n\nמה תרצה לעשות?`,
+      role:    'assistant',
+      content: `שלום ${firstName} 👋\nאני עוזר המשפחה שלך — כתוב לי בעברית רגילה ואעזור לך:\n🛒 להוסיף לקניות\n📅 לנהל את היומן\n✅ ליצור משימות`,
     }
   ])
   const [input,   setInput]   = useState('')
@@ -101,9 +96,12 @@ export default function AiAssistant() {
   }, [messages, loading])
 
   async function send(text) {
-    const msg = (text || input).trim()
+    const msg = (text ?? input).trim()
     if (!msg || loading) return
     setInput('')
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+    }
 
     const userMsg = { role: 'user', content: msg }
     setMessages(prev => [...prev, userMsg])
@@ -119,19 +117,20 @@ export default function AiAssistant() {
         history: historyForApi,
       })
       setMessages(prev => [...prev, {
-        role: 'assistant',
+        role:    'assistant',
         content: res.data.reply,
         actions: res.data.actions || [],
       }])
-    } catch {
+    } catch (err) {
+      const serverMsg = err?.response?.data?.message
       setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'אופס, משהו השתבש. נסה שוב 🙏',
+        role:    'assistant',
+        content: serverMsg || 'אופס, משהו לא עבד. נסה שוב 🙏',
         actions: [],
       }])
     } finally {
       setLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 100)
+      setTimeout(() => inputRef.current?.focus(), 50)
     }
   }
 
@@ -142,22 +141,45 @@ export default function AiAssistant() {
     }
   }
 
-  const showSuggestions = messages.length === 1
+  const showSuggestions = messages.length === 1 && !loading
 
   return (
-    <div className="min-h-screen bg-[#f0f4f8] dark:bg-gray-900 flex flex-col">
-      <Header />
+    <div className="min-h-screen flex flex-col" style={{ background: dark ? '#111827' : 'linear-gradient(160deg, #1d4ed8 0%, #3b82f6 35%, #e0f2fe 100%)' }}>
+
+      {/* Custom header */}
+      <div
+        className="fixed top-0 inset-x-0 z-30"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="h-16 max-w-lg mx-auto px-4 flex items-center justify-between">
+          <button
+            onClick={() => navigate(-1)}
+            className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+          >
+            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div className="text-center">
+            <p className="text-white font-bold text-base leading-tight">עוזר המשפחה</p>
+            <p className="text-blue-200 text-xs">מחובר · עונה בעברית</p>
+          </div>
+          <div className="w-9" />
+        </div>
+      </div>
 
       {/* Chat area */}
       <main
         className="flex-1 overflow-y-auto px-4 max-w-lg mx-auto w-full"
-        style={{ paddingTop: '80px', paddingBottom: '140px' }}
+        style={{ paddingTop: '80px', paddingBottom: '136px' }}
       >
-        {/* AI header card */}
-        <div className="flex flex-col items-center py-6 mb-2">
-          <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-3xl shadow-lg mb-2">🤖</div>
-          <h2 className="text-base font-bold text-gray-800 dark:text-white">עוזר המשפחה</h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500">מופעל על ידי AI · עונה בעברית</p>
+        {/* Avatar */}
+        <div className="flex flex-col items-center py-8">
+          <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/40 flex items-center justify-center text-4xl shadow-xl mb-3">
+            🤖
+          </div>
+          <p className="text-white font-bold text-lg">עוזר המשפחה</p>
+          <p className="text-blue-200 text-xs mt-0.5">מופעל על ידי AI · Groq llama 70b</p>
         </div>
 
         {/* Messages */}
@@ -166,18 +188,19 @@ export default function AiAssistant() {
           {loading && <TypingDots />}
         </div>
 
-        {/* Quick suggestions */}
-        {showSuggestions && !loading && (
-          <div className="mt-2" dir="rtl">
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 pr-1">נסה לכתוב:</p>
+        {/* Suggestions */}
+        {showSuggestions && (
+          <div className="mt-4" dir="rtl">
+            <p className="text-blue-200 text-xs mb-2 pr-1">נסה לשאול:</p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTIONS.map(s => (
                 <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full px-3 py-1.5 text-gray-600 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 hover:text-blue-600 transition-colors shadow-sm"
+                  key={s.text}
+                  onClick={() => send(s.text)}
+                  className="flex items-center gap-1.5 text-xs bg-white/15 hover:bg-white/25 backdrop-blur-sm border border-white/30 rounded-full px-3 py-1.5 text-white transition-colors shadow-sm"
                 >
-                  {s}
+                  <span>{s.icon}</span>
+                  <span>{s.text}</span>
                 </button>
               ))}
             </div>
@@ -189,35 +212,37 @@ export default function AiAssistant() {
 
       {/* Input bar */}
       <div
-        className="fixed bottom-16 inset-x-0 z-20 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]"
+        className="fixed bottom-16 inset-x-0 z-20"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
-        <div className="max-w-lg mx-auto px-3 py-2 flex items-end gap-2" dir="rtl">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="כתוב לי משהו..."
-            rows={1}
-            disabled={loading}
-            className="flex-1 resize-none bg-gray-100 dark:bg-gray-800 rounded-2xl px-4 py-2.5 text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed max-h-28 overflow-y-auto"
-            style={{ direction: 'rtl' }}
-            onInput={e => {
-              e.target.style.height = 'auto'
-              e.target.style.height = Math.min(e.target.scrollHeight, 112) + 'px'
-            }}
-          />
-          <button
-            onClick={() => send()}
-            disabled={!input.trim() || loading}
-            className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0 transition-all disabled:opacity-40 disabled:scale-95 active:scale-95 hover:bg-blue-700 shadow-md"
-            aria-label="שלח"
-          >
-            <svg className="w-5 h-5 text-white rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+        <div className="max-w-lg mx-auto px-3 py-2.5">
+          <div className="flex items-end gap-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 px-3 py-2" dir="rtl">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="כתוב לי משהו..."
+              rows={1}
+              disabled={loading}
+              className="flex-1 resize-none bg-transparent text-sm text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed max-h-28 overflow-y-auto py-1"
+              style={{ direction: 'rtl' }}
+              onInput={e => {
+                e.target.style.height = 'auto'
+                e.target.style.height = Math.min(e.target.scrollHeight, 112) + 'px'
+              }}
+            />
+            <button
+              onClick={() => send()}
+              disabled={!input.trim() || loading}
+              className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shrink-0 transition-all disabled:opacity-30 active:scale-95 hover:bg-blue-700 shadow-md mb-0.5"
+              aria-label="שלח"
+            >
+              <svg className="w-4 h-4 text-white rotate-180" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

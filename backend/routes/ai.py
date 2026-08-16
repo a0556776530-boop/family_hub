@@ -126,12 +126,20 @@ SYSTEM_PROMPT = """אתה "עוזר המשפחה" — עוזר אישי חכם �
 • הצגת המשימות הפתוחות
 • יצירת משימות חדשות
 
-כללים:
-- תמיד השתמש בכלים המתאימים לפני שאתה עונה
-- לאחר שימוש בכלי, ענה בצורה שיחתית בעברית על מה שעשית
-- אם אתה לא בטוח, שאל בקצרה
-- היה ידידותי ותמציתי — לא יותר מ-3 משפטים
-- אל תציין "כלי" או "פונקציה" — פשוט ספר מה עשית
+כללים חשובים — חובה לשמור עליהם:
+1. אל תוסיף פריטים לקניות אם המשתמש לא ציין בדיוק מה להוסיף — שאל אותו קודם "מה תרצה להוסיף?"
+2. אם המשתמש ציין מה להוסיף (מתכון, ארוחה, פריטים ספציפיים) — הוסף אותם
+3. לאחר שימוש בכלי, ענה בצורה שיחתית קצרה בעברית על מה שעשית
+4. אל תמציא פריטים שהמשתמש לא ביקש
+5. אם אתה לא בטוח מה המשתמש רוצה — שאל שאלה קצרה
+6. היה ידידותי ותמציתי — לא יותר מ-2-3 משפטים
+7. אל תציין "כלי" או "פונקציה" — פשוט ספר מה עשית
+
+דוגמאות נכונות:
+- "תוסיף חלב" → הוסף חלב ✓
+- "צריך דברים לפיצה" → הוסף חומרים לפיצה ✓
+- "להוסיף לקניות" → שאל "מה תרצה להוסיף?" ✓
+- "תוסיף משהו" → שאל "מה להוסיף?" ✓
 
 תאריך היום: {today}"""
 
@@ -287,8 +295,23 @@ def ai_chat():
         choice = response.choices[0]
 
         # Handle tool calls
-        if choice.finish_reason == 'tool_calls' and choice.message.tool_calls:
-            messages.append(choice.message)
+        if choice.message.tool_calls:
+            # Serialize the assistant message as a plain dict (Groq requires this)
+            messages.append({
+                'role':       'assistant',
+                'content':    choice.message.content or '',
+                'tool_calls': [
+                    {
+                        'id':   tc.id,
+                        'type': 'function',
+                        'function': {
+                            'name':      tc.function.name,
+                            'arguments': tc.function.arguments,
+                        }
+                    }
+                    for tc in choice.message.tool_calls
+                ]
+            })
 
             for tc in choice.message.tool_calls:
                 tool_name = tc.function.name
