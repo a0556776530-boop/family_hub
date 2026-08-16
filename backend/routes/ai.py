@@ -27,7 +27,7 @@ except Exception:
 
 MODEL_PRIMARY  = 'llama-3.3-70b-versatile'   # 100K tokens/day — full power + internet
 MODEL_FALLBACK = 'llama-3.1-8b-instant'        # 500K tokens/day — full power + internet
-MODEL_BASIC    = 'gemma2-9b-it'                 # separate limit  — no internet, app-only
+MODEL_BASIC    = 'llama3-8b-8192'               # separate limit  — no internet, app-only
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -548,13 +548,17 @@ def ai_chat():
     def _call(model, **kwargs):
         return _groq_client.chat.completions.create(model=model, **kwargs)
 
+    def _is_retryable(e):
+        s = str(e).lower()
+        return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
+
     def _call_with_fallback(**kwargs):
         # Try full models first (with all tools including web_search)
         for model in (MODEL_PRIMARY, MODEL_FALLBACK):
             try:
                 return _call(model, **kwargs), model
             except Exception as e:
-                if 'rate_limit' in str(e).lower() or '429' in str(e):
+                if _is_retryable(e):
                     continue
                 raise
         # Last resort: basic model without web_search (saves tokens, still controls app)
@@ -564,8 +568,8 @@ def ai_chat():
                 basic_kwargs['tools'] = [t for t in basic_kwargs['tools'] if t['function']['name'] != 'web_search']
             return _call(MODEL_BASIC, **basic_kwargs), MODEL_BASIC
         except Exception as e:
-            if 'rate_limit' in str(e).lower() or '429' in str(e):
-                raise Exception('הגענו לגבול היומי של כל המודלים — נסה שוב מחר בבוקר 🌅')
+            if _is_retryable(e):
+                raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
             raise
 
     try:
@@ -624,7 +628,18 @@ def ai_chat():
         return jsonify({'reply': reply, 'actions': actions}), 200
 
     except Exception as e:
-        return jsonify({'error': 'ai_error', 'message': str(e)}), 500
+        err = str(e)
+        if 'גבול' in err or 'מחר' in err:
+            user_msg = err
+        elif 'rate_limit' in err.lower() or '429' in err:
+            user_msg = 'הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅'
+        elif 'api_key' in err.lower() or 'authentication' in err.lower():
+            user_msg = 'שגיאת הגדרות AI — פנה למנהל המערכת'
+        elif 'timeout' in err.lower() or 'connection' in err.lower():
+            user_msg = 'העיכוב ארוך מדי — נסה שוב 🔄'
+        else:
+            user_msg = 'שגיאה זמנית — נסה שוב בעוד כמה שניות 🔄'
+        return jsonify({'error': 'ai_error', 'message': user_msg}), 500
 
 
 # ─── Legacy shopping endpoint ───────────────────────────────────────────────
