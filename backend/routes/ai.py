@@ -547,8 +547,20 @@ def _keyword_parse(message, user):
     )
     if not task_add:
         # "אתה יכול להוסיף משימה לקנות נעלים?"
-        if re.search(ADD_WORDS, msg, re.IGNORECASE) and 'משימה' in msg:
+        if re.search(ADD_WORDS, msg, re.IGNORECASE) and 'משימ' in msg:
             task_add = re.search(r'משימה\s+(.+)', msg, re.IGNORECASE)
+    if not task_add:
+        # "תוסיף לקנות נעלים למשימות"
+        task_add2 = re.search(
+            ADD_WORDS + r'\s+(.+?)\s+ל(?:ה)?משימות?',
+            msg, re.IGNORECASE
+        )
+        if task_add2:
+            title = _norm(task_add2.group(1))
+            if title and len(title) > 1:
+                result = execute_tool('create_task', {'title': title}, user)
+                if result.get('created'):
+                    return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
     if task_add:
         title = _norm(task_add.group(1))
         if title and len(title) > 1:
