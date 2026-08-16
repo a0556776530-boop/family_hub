@@ -36,13 +36,35 @@ SYSTEM_PROMPT = """אתה עוזר קניות חכם לאפליקציה משפח
 קטגוריות: ירקות, פירות, מזון, ניקיון, פארם, תינוקות, אחר"""
 
 
+def _list_available_models():
+    try:
+        r = _requests.get(
+            f"https://generativelanguage.googleapis.com/v1beta/models?key={_GEMINI_KEY}",
+            timeout=10
+        )
+        models = r.json().get('models', [])
+        return [
+            m['name'].replace('models/', '')
+            for m in models
+            if 'generateContent' in m.get('supportedGenerationMethods', [])
+        ]
+    except Exception:
+        return []
+
+
 def _call_gemini(text):
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"parts": [{"text": text}]}],
         "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024},
     }
-    for model in _MODELS_TO_TRY:
+
+    # First try hardcoded list, then fall back to live model list
+    available = _MODELS_TO_TRY + [
+        m for m in _list_available_models() if m not in _MODELS_TO_TRY
+    ]
+
+    for model in available:
         for api_ver in ('v1beta', 'v1'):
             url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{model}:generateContent?key={_GEMINI_KEY}"
             try:
@@ -52,6 +74,13 @@ def _call_gemini(text):
             except Exception:
                 continue
     raise RuntimeError('no working gemini model found')
+
+
+@ai_bp.route('/models', methods=['GET'])
+@require_auth
+def list_models():
+    models = _list_available_models()
+    return jsonify({'models': models, 'key_set': bool(_GEMINI_KEY)}), 200
 
 
 @ai_bp.route('/shopping', methods=['POST'])
