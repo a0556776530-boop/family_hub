@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useFamily } from '../../context/FamilyContext'
 import { useTheme } from '../../context/ThemeContext'
 
-const ROOT_PATHS = new Set(['/', '/tasks', '/shopping', '/calendar', '/board', '/rewards', '/profile'])
+const ROOT_PATHS = new Set(['/', '/tasks', '/shopping', '/calendar', '/board', '/rewards', '/profile', '/ai'])
 
 export default function Header() {
   const { user }    = useAuth()

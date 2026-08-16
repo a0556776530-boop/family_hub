@@ -15,8 +15,9 @@ import Calendar    from './pages/Calendar'
 import Shopping    from './pages/Shopping'
 import Family      from './pages/Family'
 import Profile     from './pages/Profile'
-import FamilyBoard   from './pages/FamilyBoard'
-import FamilyMoments from './pages/FamilyMoments'
+import FamilyBoard    from './pages/FamilyBoard'
+import FamilyMoments  from './pages/FamilyMoments'
+import AiAssistant    from './pages/AiAssistant'
 import JoinViaLink    from './pages/JoinViaLink'
 import ForgotPassword from './pages/ForgotPassword'
 
@@ -61,6 +62,7 @@ function AppRoutes() {
       <Route path="/profile"      element={<ProtectedRoute><Profile /></ProtectedRoute>} />
       <Route path="/board"        element={<ProtectedRoute><FamilyBoard /></ProtectedRoute>} />
       <Route path="/moments"      element={<ProtectedRoute><FamilyMoments /></ProtectedRoute>} />
+      <Route path="/ai"           element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
       <Route path="/join/:code"        element={<JoinViaLink />} />
       <Route path="/forgot-password"  element={<ForgotPassword />} />
       <Route path="*"                 element={<Navigate to="/" replace />} />

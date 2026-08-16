@@ -3,9 +3,9 @@ import { NavLink } from 'react-router-dom'
 const tabs = [
   { to: '/',          label: 'בית',    icon: 'home'     },
   { to: '/shopping',  label: 'קניות',  icon: 'cart'     },
+  { to: '/ai',        label: 'עוזר',   icon: 'ai'       },
   { to: '/calendar',  label: 'יומן',   icon: 'calendar' },
   { to: '/tasks',     label: 'משימות', icon: 'tasks'    },
-  { to: '/profile',   label: 'פרופיל', icon: 'person'   },
 ]
 
 function Icon({ name, filled }) {
@@ -20,8 +20,12 @@ function Icon({ name, filled }) {
       return <svg className={cls} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={sw}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
     case 'tasks':
       return <svg className={cls} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={sw}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-    case 'person':
-      return <svg className={cls} fill={filled ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={sw}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+    case 'ai':
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={sw}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1 1 .03 2.798-1.402 2.798H4.2c-1.431 0-2.402-1.799-1.402-2.798L4.2 15.3" />
+        </svg>
+      )
     default: return null
   }
 }
@@ -45,7 +49,13 @@ export default function BottomNav() {
             {({ isActive }) => (
               <>
                 <div className="relative">
-                  <Icon name={tab.icon} filled={isActive} />
+                  {tab.icon === 'ai' && isActive ? (
+                    <div className="w-6 h-6 flex items-center justify-center text-lg leading-none">🤖</div>
+                  ) : tab.icon === 'ai' ? (
+                    <div className="w-6 h-6 flex items-center justify-center text-lg leading-none opacity-60">🤖</div>
+                  ) : (
+                    <Icon name={tab.icon} filled={isActive} />
+                  )}
                   {isActive && <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-blue-600 dark:bg-blue-400" />}
                 </div>
                 <span className={`text-[10px] leading-none mt-0.5 ${isActive ? 'font-bold' : 'font-medium'}`}>{tab.label}</span>
