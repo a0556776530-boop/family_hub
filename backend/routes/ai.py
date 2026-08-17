@@ -26,17 +26,19 @@ except Exception:
 
 try:
     from openai import OpenAI as _OpenAIClient
-    _GEMINI_KEY = os.environ.get('GEMINI_API_KEY', '')
-    _gemini_client = _OpenAIClient(
-        api_key=_GEMINI_KEY,
-        base_url='https://generativelanguage.googleapis.com/v1beta/openai/'
-    ) if _GEMINI_KEY else None
+    _GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/openai/'
+    _GEMINI_KEY  = os.environ.get('GEMINI_API_KEY', '')
+    _GEMINI_KEY2 = os.environ.get('GEMINI_API_KEY_2', '')
+    _gemini_client  = _OpenAIClient(api_key=_GEMINI_KEY,  base_url=_GEMINI_BASE) if _GEMINI_KEY  else None
+    _gemini_client2 = _OpenAIClient(api_key=_GEMINI_KEY2, base_url=_GEMINI_BASE) if _GEMINI_KEY2 else None
 except Exception:
-    _gemini_client = None
-    _GEMINI_KEY = ''
+    _gemini_client  = None
+    _gemini_client2 = None
+    _GEMINI_KEY  = ''
+    _GEMINI_KEY2 = ''
 
 # AI is available if at least one model provider is configured
-_AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY)
+_AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
 
 MODEL_PRIMARY  = 'llama-3.3-70b-versatile'              # 100K tokens/day
 MODEL_FALLBACK = 'llama-3.1-8b-instant'                 # 500K tokens/day
@@ -755,14 +757,16 @@ def ai_chat():
         if 'tools' in no_web_kwargs:
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
 
-        # Tier 1: try all Gemini models (each has its own quota)
-        if _gemini_client:
+        # Tier 1: try all Gemini models with both API keys
+        for gclient, glabel in [(_gemini_client, 'key1'), (_gemini_client2, 'key2')]:
+            if not gclient:
+                continue
             for gmodel in GEMINI_MODELS:
                 try:
-                    resp = _gemini_client.chat.completions.create(model=gmodel, **simple)
+                    resp = gclient.chat.completions.create(model=gmodel, **simple)
                     return resp, gmodel
                 except Exception as e:
-                    print(f'[AI] Gemini {gmodel} failed: {e!r}', file=sys.stderr)
+                    print(f'[AI] Gemini {gmodel} ({glabel}) failed: {e!r}', file=sys.stderr)
                     continue
 
         # Tier 2: Groq — try every model before giving up
