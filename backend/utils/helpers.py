@@ -19,15 +19,16 @@ def serialize_doc(doc: dict) -> dict:
             result[k] = v
     return result
 
-def user_public(user: dict) -> dict:
-    raw_role = user.get('role', 'child')
-    # normalise legacy 'admin'/'member' values
+def normalize_role(raw_role: str) -> str:
+    """Map legacy 'admin'/'member' role values to the current 'parent'/'child' scheme."""
     if raw_role == 'admin':
-        role = 'parent'
-    elif raw_role == 'member':
-        role = 'child'
-    else:
-        role = raw_role  # 'parent' or 'child' already
+        return 'parent'
+    if raw_role == 'member':
+        return 'child'
+    return raw_role or 'child'
+
+def user_public(user: dict) -> dict:
+    role = normalize_role(user.get('role', 'child'))
     return {
         'id':             str(user['_id']),
         'name':           user.get('name', ''),

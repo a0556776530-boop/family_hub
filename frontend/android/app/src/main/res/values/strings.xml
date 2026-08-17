@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Family Hub</string>
+    <string name="title_activity_main">Family Hub</string>
+    <string name="package_name">app.familyhub.mobile</string>
+    <string name="custom_url_scheme">app.familyhub.mobile</string>
+
+    <!-- Background location tracking notification (Android foreground-service requirement) -->
+    <string name="capacitor_background_geolocation_notification_channel_name">מעקב מיקום משפחתי</string>
+</resources>

@@ -3,7 +3,7 @@ from bson import ObjectId
 from datetime import datetime, timezone
 from app import mongo, bcrypt
 from utils.jwt_utils import require_auth
-from utils.helpers import generate_invite_code, user_public
+from utils.helpers import generate_invite_code, user_public, normalize_role
 
 family_bp = Blueprint('family', __name__)
 
@@ -228,3 +228,41 @@ def dashboard():
         'upcoming_events': upcoming_events,
         'current_user':   user_public(user),
     }), 200
+
+
+@family_bp.route('/locations', methods=['GET'])
+@require_auth
+def family_locations():
+    user = request.current_user
+    if normalize_role(user.get('role')) != 'parent':
+        return jsonify({'error': 'forbidden', 'message': 'רק הורה יכול לצפות במיקומים'}), 403
+    if not user.get('family_id'):
+        return jsonify({'error': 'no_family'}), 404
+
+    fam = mongo.db.families.find_one({'_id': ObjectId(user['family_id'])})
+    if not fam:
+        return jsonify({'error': 'family_not_found'}), 404
+
+    # Server-trusted list of member ids from the family doc — never accept a child id from the client.
+    ids = [ObjectId(m) for m in fam.get('members', [])]
+    docs = list(mongo.db.users.find({'_id': {'$in': ids}}, {'password': 0}))
+    child_docs = [d for d in docs if normalize_role(d.get('role')) == 'child']
+    child_ids  = [str(d['_id']) for d in child_docs]
+
+    locs = {l['user_id']: l for l in mongo.db.locations.find({'user_id': {'$in': child_ids}})}
+
+    children = []
+    for d in child_docs:
+        uid = str(d['_id'])
+        loc = locs.get(uid)
+        children.append({
+            'user_id':     uid,
+            'name':        d.get('name', ''),
+            'avatar_url':  d.get('avatar_url', ''),
+            'lat':         loc['lat'] if loc else None,
+            'lng':         loc['lng'] if loc else None,
+            'accuracy_m':  loc.get('accuracy_m') if loc else None,
+            'updated_at':  loc['updated_at'].isoformat() if loc else None,
+        })
+
+    return jsonify({'children': children}), 200

@@ -39,6 +39,7 @@ def create_app():
     from routes.notifications import notifications_bp
     from routes.webauthn      import webauthn_bp
     from routes.ai            import ai_bp
+    from routes.location      import location_bp
 
     app.register_blueprint(auth_bp,          url_prefix='/api/auth')
     app.register_blueprint(family_bp,        url_prefix='/api/family')
@@ -51,6 +52,7 @@ def create_app():
     app.register_blueprint(notifications_bp, url_prefix='/api/notifications')
     app.register_blueprint(webauthn_bp,      url_prefix='/api/auth/webauthn')
     app.register_blueprint(ai_bp,            url_prefix='/api/ai')
+    app.register_blueprint(location_bp,      url_prefix='/api/location')
 
     import os
     from flask import send_from_directory

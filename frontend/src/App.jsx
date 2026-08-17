@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { FamilyProvider } from './context/FamilyContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { LocationTrackingProvider } from './context/LocationTrackingContext'
 import { usePushNotifications } from './hooks/usePushNotifications'
 import AppLock from './components/AppLock'
 import api from './api/client'
@@ -28,6 +29,7 @@ import Profile     from './pages/Profile'
 import FamilyBoard    from './pages/FamilyBoard'
 import FamilyMoments  from './pages/FamilyMoments'
 import AiAssistant    from './pages/AiAssistant'
+import FamilyMap      from './pages/FamilyMap'
 import JoinViaLink    from './pages/JoinViaLink'
 import ForgotPassword from './pages/ForgotPassword'
 
@@ -74,6 +76,7 @@ function AppRoutes() {
       <Route path="/board"        element={<ProtectedRoute><FamilyBoard /></ProtectedRoute>} />
       <Route path="/moments"      element={<ProtectedRoute><FamilyMoments /></ProtectedRoute>} />
       <Route path="/ai"           element={<ProtectedRoute><AiAssistant /></ProtectedRoute>} />
+      <Route path="/family/map"   element={<ProtectedRoute><FamilyMap /></ProtectedRoute>} />
       <Route path="/join/:code"        element={<JoinViaLink />} />
       <Route path="/forgot-password"  element={<ForgotPassword />} />
       <Route path="*"                 element={<Navigate to="/" replace />} />
@@ -87,9 +90,11 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <FamilyProvider>
-            <AppLock>
-              <AppRoutes />
-            </AppLock>
+            <LocationTrackingProvider>
+              <AppLock>
+                <AppRoutes />
+              </AppLock>
+            </LocationTrackingProvider>
           </FamilyProvider>
         </AuthProvider>
       </ThemeProvider>

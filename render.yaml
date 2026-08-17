@@ -28,6 +28,8 @@ services:
     envVars:
       - key: VITE_API_URL
         sync: false          # תמלא עם ה-URL של ה-backend לאחר יצירתו
+      - key: VITE_GOOGLE_MAPS_API_KEY
+        sync: false          # מפתח Google Maps JS API — למסך מיקום המשפחה
     routes:
       - type: rewrite
         source: /*

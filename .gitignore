@@ -24,3 +24,18 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Android (Capacitor)
+frontend/android/app/build/
+frontend/android/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/.idea/
+frontend/android/captures/
+frontend/android/app/release/
+
+# iOS (Capacitor)
+frontend/ios/App/Pods/
+frontend/ios/App/build/
+frontend/ios/App/DerivedData/
+frontend/ios/.xcode.env.local
