@@ -749,6 +749,7 @@ def ai_chat():
         return resp, 'gemini-2.0-flash'
 
     def _call_with_fallback(**kwargs):
+        import sys
         no_web_kwargs = {**kwargs}
         if 'tools' in no_web_kwargs:
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
@@ -757,25 +758,25 @@ def ai_chat():
         try:
             return _call_gemini(**no_web_kwargs)
         except Exception as _gem_err:
-            import sys
             print(f'[AI] Gemini failed: {_gem_err!r}', file=sys.stderr)
 
-        # Tier 2+: Groq fallback
+        # Tier 2+: Groq — try every model before giving up
         if _groq_client:
-            for model in (MODEL_PRIMARY, MODEL_FALLBACK):
+            for model, kw in [
+                (MODEL_PRIMARY,  kwargs),
+                (MODEL_FALLBACK, kwargs),
+                (MODEL_BASIC,    no_web_kwargs),
+                (MODEL_EXTRA1,   no_web_kwargs),
+                (MODEL_EXTRA2,   no_web_kwargs),
+            ]:
                 try:
-                    return _call(model, **kwargs), model
+                    return _call(model, **kw), model
                 except Exception as e:
-                    if _is_retryable(e):
-                        continue
-                    raise
-            for model in (MODEL_BASIC, MODEL_EXTRA1, MODEL_EXTRA2):
-                try:
-                    return _call(model, **no_web_kwargs), model
-                except Exception as e:
-                    if _is_retryable(e):
-                        continue
-                    raise
+                    err_str = str(e).lower()
+                    print(f'[AI] {model} failed: {e!r}', file=sys.stderr)
+                    if 'invalid_api_key' in err_str or 'invalid api key' in err_str:
+                        raise Exception('שגיאת הגדרות AI — מפתח API שגוי')
+                    continue  # try next model for any other error
 
         raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
@@ -838,7 +839,9 @@ def ai_chat():
             )
             reply = final.choices[0].message.content.strip()
         else:
-            reply = choice.message.content.strip()
+            reply = (choice.message.content or '').strip()
+            if not reply:
+                reply = 'לא הצלחתי לנסח תשובה, נסה שוב.'
 
         return jsonify({'reply': reply, 'actions': actions}), 200
 

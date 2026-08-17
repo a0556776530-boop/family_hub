@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import api from '../api/client'
@@ -6,11 +6,17 @@ import { isWebAuthnSupported, loginWithFingerprint } from '../utils/webauthn'
 
 export default function Login() {
   const { login, setAuthToken } = useAuth()
-  const navigate  = useNavigate()
-  const [form, setForm]         = useState({ email: '', password: '' })
+  const navigate    = useNavigate()
+  const passwordRef = useRef(null)
+  const savedEmail  = localStorage.getItem('fh_saved_email') || ''
+  const [form, setForm]         = useState({ email: savedEmail, password: '' })
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
   const [fpLoading, setFpLoading] = useState(false)
+
+  useEffect(() => {
+    if (savedEmail) passwordRef.current?.focus()
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
@@ -20,6 +26,7 @@ export default function Login() {
     setLoading(true)
     try {
       await login(form.email, form.password)
+      localStorage.setItem('fh_saved_email', form.email)
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.response?.data?.message || 'שגיאה בהתחברות')
@@ -64,21 +71,32 @@ export default function Login() {
           </div>
         )}
 
-        <div>
-          <label className="block text-blue-100 text-sm font-medium mb-1.5">אימייל</label>
-          <input
-            type="email"
-            required
-            value={form.email}
-            onChange={e => set('email', e.target.value)}
-            placeholder="your@email.com"
-            className="w-full bg-white/15 border border-white/25 text-white placeholder:text-blue-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
-          />
-        </div>
+        {savedEmail ? (
+          <div className="flex items-center justify-between bg-white/10 border border-white/20 rounded-xl px-4 py-3">
+            <span className="text-white text-sm">{form.email}</span>
+            <button type="button" onClick={() => { set('email', ''); localStorage.removeItem('fh_saved_email'); window.location.reload() }}
+              className="text-blue-300 text-xs hover:text-white transition-colors">
+              שנה חשבון
+            </button>
+          </div>
+        ) : (
+          <div>
+            <label className="block text-blue-100 text-sm font-medium mb-1.5">אימייל</label>
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={e => set('email', e.target.value)}
+              placeholder="your@email.com"
+              className="w-full bg-white/15 border border-white/25 text-white placeholder:text-blue-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-white/50"
+            />
+          </div>
+        )}
 
         <div>
           <label className="block text-blue-100 text-sm font-medium mb-1.5">סיסמה</label>
           <input
+            ref={passwordRef}
             type="password"
             required
             value={form.password}
