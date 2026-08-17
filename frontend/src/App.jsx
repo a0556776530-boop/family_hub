@@ -1,9 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { FamilyProvider } from './context/FamilyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { usePushNotifications } from './hooks/usePushNotifications'
 import AppLock from './components/AppLock'
+import api from './api/client'
+
+function useKeepAlive() {
+  useEffect(() => {
+    api.get('/api/health').catch(() => {})
+    const id = setInterval(() => api.get('/api/health').catch(() => {}), 8 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [])
+}
 
 import Splash      from './pages/Splash'
 import Login       from './pages/Login'
@@ -47,6 +57,7 @@ function Loader() {
 function AppRoutes() {
   const { user, loading } = useAuth()
   usePushNotifications(user)
+  useKeepAlive()
   if (loading) return <Loader />
   return (
     <Routes>

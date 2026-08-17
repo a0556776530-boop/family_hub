@@ -238,33 +238,120 @@ function Message({ msg }) {
   )
 }
 
+function formatDate(iso) {
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = now - d
+  if (diff < 86400000) return 'היום'
+  if (diff < 172800000) return 'אתמול'
+  return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+}
+
+function HistoryPanel({ history, onSelect, onClose, onClear }) {
+  return (
+    <div className="fixed inset-0 z-50 flex" dir="rtl">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-80 max-w-[85vw] h-full flex flex-col shadow-2xl"
+        style={{ background: 'linear-gradient(180deg,#0c1445 0%,#1a2f7a 100%)', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
+          <span className="text-white font-bold text-base">היסטוריית שיחות</span>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto py-2">
+          {history.length === 0 ? (
+            <p className="text-blue-300/60 text-sm text-center mt-8 px-4">אין היסטוריה עדיין</p>
+          ) : (
+            history.map((h, i) => (
+              <button key={i} onClick={() => onSelect(h)}
+                className="w-full text-right px-4 py-3 hover:bg-white/8 transition-colors border-b border-white/5">
+                <p className="text-blue-300 text-[10px] mb-0.5">{formatDate(h.date)} · {h.count} הודעות</p>
+                <p className="text-white text-sm truncate">{h.preview}</p>
+              </button>
+            ))
+          )}
+        </div>
+        {history.length > 0 && (
+          <button onClick={onClear}
+            className="mx-4 mb-4 py-2 rounded-xl text-red-300 text-sm border border-red-400/30 hover:bg-red-400/10 transition-colors">
+            נקה היסטוריה
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ViewingHistoryBanner({ date, onClose }) {
+  return (
+    <div className="mx-4 mb-2 px-4 py-2 rounded-xl flex items-center justify-between gap-2"
+      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }} dir="rtl">
+      <span className="text-blue-200 text-xs">מציג שיחה מ-{formatDate(date)}</span>
+      <button onClick={onClose} className="text-blue-300 text-xs underline">חזור לשיחה נוכחית</button>
+    </div>
+  )
+}
+
 export default function AiAssistant() {
-  const { user }  = useAuth()
-  const navigate  = useNavigate()
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
-  const firstName = (user?.name || '').split(' ')[0]
-  const STORAGE_KEY = `ai_chat_${user?.family_id || 'default'}`
+  const { user }     = useAuth()
+  const navigate     = useNavigate()
+  const bottomRef    = useRef(null)
+  const inputRef     = useRef(null)
+  const firstName    = (user?.name || '').split(' ')[0]
+  const fid          = user?.family_id || 'default'
+  const STORAGE_KEY  = `ai_chat_${fid}`
+  const HISTORY_KEY  = `ai_history_${fid}`
 
-  const [messages, setMessages] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) return JSON.parse(saved)
-    } catch {}
-    return [{ role: 'assistant', content: `שלום ${firstName} 👋\nאני כאן לעזור — קניות, יומן, משימות, מתכונים, שאלות — הכל.\n\nמה תרצה?` }]
-  })
-  const [input,   setInput]   = useState('')
-  const [loading, setLoading] = useState(false)
+  const freshGreeting = () => [{ role: 'assistant', content: `שלום ${firstName} 👋\nאני כאן לעזור — קניות, יומן, משימות, מתכונים, שאלות — הכל.\n\nמה תרצה?` }]
 
+  const [messages,      setMessages]      = useState(freshGreeting)
+  const [input,         setInput]         = useState('')
+  const [loading,       setLoading]       = useState(false)
+  const [showHistory,   setShowHistory]   = useState(false)
+  const [viewingHist,   setViewingHist]   = useState(null)
+
+  const loadHistory = () => {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
+  }
+  const [history, setHistory] = useState(loadHistory)
+
+  const saveToHistory = (msgs) => {
+    const userMsgs = msgs.filter(m => m.role === 'user')
+    if (userMsgs.length === 0) return
+    const entry = {
+      date: new Date().toISOString(),
+      preview: userMsgs[0].content.slice(0, 60),
+      count: msgs.length,
+      messages: msgs.slice(-40),
+    }
+    const prev = loadHistory()
+    const updated = [entry, ...prev].slice(0, 20)
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)) } catch {}
+    setHistory(updated)
+  }
+
+  // On unmount: save current chat to history, clear current chat
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-50))) } catch {}
-  }, [messages])
+    return () => {
+      setMessages(cur => {
+        if (cur.filter(m => m.role === 'user').length > 0) {
+          saveToHistory(cur)
+        }
+        return cur
+      })
+      try { localStorage.removeItem(STORAGE_KEY) } catch {}
+    }
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
   async function send(text) {
+    if (viewingHist) return
     const msg = (text ?? input).trim()
     if (!msg || loading) return
     setInput('')
@@ -273,7 +360,6 @@ export default function AiAssistant() {
     setLoading(true)
 
     try {
-      // ── Zero-token path: detect intent in browser, call API directly ──────
       const intent = detectIntent(msg)
       if (intent) {
         const result = await executeIntent(intent)
@@ -285,7 +371,6 @@ export default function AiAssistant() {
         }
       }
 
-      // ── AI path: only for questions / complex requests ───────────────────
       const history = messages
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({ role: m.role, content: m.content }))
@@ -301,15 +386,29 @@ export default function AiAssistant() {
   }
 
   const resetChat = () => {
-    const fresh = [{ role: 'assistant', content: `שלום ${firstName} 👋\nאני כאן לעזור — קניות, יומן, משימות, מתכונים, שאלות — הכל.\n\nמה תרצה?` }]
-    setMessages(fresh)
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh)) } catch {}
+    saveToHistory(messages)
+    setMessages(freshGreeting())
+    setViewingHist(null)
   }
 
-  const showSuggestions = messages.length === 1 && !loading
+  const displayedMessages = viewingHist ? viewingHist.messages : messages
+  const showSuggestions = !viewingHist && messages.length === 1 && !loading
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(175deg,#0c1445 0%,#1a2f7a 35%,#1d4ed8 75%,#2563eb 100%)' }}>
+
+      {showHistory && (
+        <HistoryPanel
+          history={history}
+          onClose={() => setShowHistory(false)}
+          onSelect={h => { setViewingHist(h); setShowHistory(false) }}
+          onClear={() => {
+            try { localStorage.removeItem(HISTORY_KEY) } catch {}
+            setHistory([])
+            setShowHistory(false)
+          }}
+        />
+      )}
 
       {/* Header */}
       <div className="fixed top-0 inset-x-0 z-30" style={{ background: 'rgba(12,20,69,0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingTop: 'env(safe-area-inset-top,0px)' }}>
@@ -330,28 +429,39 @@ export default function AiAssistant() {
               <p className="text-blue-300 text-[11px] leading-none mt-0.5">פעיל · AI</p>
             </div>
           </div>
-          <button onClick={resetChat}
-            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-            title="שיחה חדשה">
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => setShowHistory(true)}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors relative"
+              title="היסטוריה">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {history.length > 0 && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-400 rounded-full" />}
+            </button>
+            <button onClick={resetChat}
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              title="שיחה חדשה">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto max-w-2xl mx-auto w-full" style={{ paddingTop: '72px', paddingBottom: '130px' }}>
 
-        {/* Avatar intro */}
         <div className="flex flex-col items-center pt-8 pb-6">
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-700 flex items-center justify-center text-4xl shadow-2xl mb-3 ring-4 ring-white/10">🤖</div>
           <p className="text-white font-bold text-lg tracking-wide">עוזר המשפחה</p>
           <p className="text-blue-300 text-xs mt-1">מחובר לאינטרנט · שולט באפליקציה</p>
         </div>
 
+        {viewingHist && <ViewingHistoryBanner date={viewingHist.date} onClose={() => setViewingHist(null)} />}
+
         <div className="space-y-1 pb-2">
-          {messages.map((msg, i) => <Message key={i} msg={msg} />)}
+          {displayedMessages.map((msg, i) => <Message key={i} msg={msg} />)}
           {loading && <TypingDots />}
 
           {showSuggestions && (
@@ -372,33 +482,35 @@ export default function AiAssistant() {
       </main>
 
       {/* Input */}
-      <div className="fixed bottom-16 inset-x-0 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom,0px)' }}>
-        <div className="max-w-2xl mx-auto px-3 py-2.5">
-          <div className="flex items-end gap-2 rounded-2xl px-3 py-2 shadow-2xl"
-            style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.15)' }}
-            dir="rtl">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
-              placeholder="שאל אותי משהו..."
-              rows={1}
-              disabled={loading}
-              className="flex-1 resize-none bg-transparent text-sm text-white placeholder-white/40 focus:outline-none leading-relaxed max-h-28 overflow-y-auto py-1"
-              style={{ direction: 'rtl' }}
-            />
-            <button onClick={() => send()} disabled={!input.trim() || loading}
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mb-0.5 transition-all disabled:opacity-25 active:scale-95"
-              style={{ background: input.trim() && !loading ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'rgba(255,255,255,0.15)' }}>
-              <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-            </button>
+      {!viewingHist && (
+        <div className="fixed bottom-16 inset-x-0 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom,0px)' }}>
+          <div className="max-w-2xl mx-auto px-3 py-2.5">
+            <div className="flex items-end gap-2 rounded-2xl px-3 py-2 shadow-2xl"
+              style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.15)' }}
+              dir="rtl">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px' }}
+                placeholder="שאל אותי משהו..."
+                rows={1}
+                disabled={loading}
+                className="flex-1 resize-none bg-transparent text-sm text-white placeholder-white/40 focus:outline-none leading-relaxed max-h-28 overflow-y-auto py-1"
+                style={{ direction: 'rtl' }}
+              />
+              <button onClick={() => send()} disabled={!input.trim() || loading}
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mb-0.5 transition-all disabled:opacity-25 active:scale-95"
+                style={{ background: input.trim() && !loading ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'rgba(255,255,255,0.15)' }}>
+                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <BottomNav />
     </div>
