@@ -697,10 +697,26 @@ def ai_diagnose():
     import sys
     results = {}
 
-    # Test Gemini key1
+    # List available Groq models first (most reliable way)
+    if _groq_client:
+        try:
+            models = _groq_client.models.list()
+            results['groq_available_models'] = sorted([m.id for m in models.data])
+        except Exception as e:
+            results['groq_models_list_error'] = str(e)[:200]
+
+    # Test Gemini — try many plausible current model names
     gemini_test_models = [
-        'gemini-2.5-flash-preview-05-20', 'gemini-2.5-flash',
-        'gemini-2.0-flash-exp', 'gemini-2.0-flash-thinking-exp', 'gemini-exp-1206',
+        # 2025-2026 stable releases
+        'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+        'gemini-2.5-flash-001', 'gemini-2.5-pro-001',
+        # 2026 generation (if released)
+        'gemini-3.0-flash', 'gemini-3.5-flash', 'gemini-3.0-pro',
+        # 2.0 stable
+        'gemini-2.0-flash', 'gemini-2.0-flash-001',
+        # Legacy previews from 2025
+        'gemini-2.5-flash-preview-05-20', 'gemini-2.5-flash-preview-04-17',
+        'gemini-2.0-flash-exp', 'gemini-exp-1206',
     ]
     for label, client in [('gemini_key1', _gemini_client), ('gemini_key2', _gemini_client2)]:
         if not client:
@@ -718,12 +734,34 @@ def ai_diagnose():
                 found = True
                 break
             except Exception as e:
-                results[f'{label}_{model}'] = str(e)[:100]
+                results[f'{label}_{model}'] = str(e)[:120]
         if not found:
             results[f'{label}_status'] = 'ALL FAILED'
+        # Try to list Gemini models via the OpenAI-compat endpoint
+        try:
+            mlist = client.models.list()
+            results[f'{label}_available'] = [m.id for m in mlist.data][:20]
+        except Exception as e:
+            results[f'{label}_list_error'] = str(e)[:120]
 
-    # Test Groq
-    groq_test_models = ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b']
+    # Test Groq — try many plausible current model names
+    groq_test_models = [
+        # Llama 4 (released 2025)
+        'meta-llama/llama-4-maverick-17b-128e-instruct',
+        'meta-llama/llama-4-scout-17b-16e-instruct',
+        'llama-4-maverick-17b-128e-instruct',
+        'llama-4-scout-17b-16e-instruct',
+        # Llama 3.x still active on Groq?
+        'llama-3.1-70b-versatile', 'llama-3.1-8b-instant',
+        'llama3-70b-8192', 'llama3-8b-8192',
+        # Other providers on Groq
+        'compound-beta', 'compound-beta-mini',
+        'moonshotai/kimi-k2-instruct',
+        # DeepSeek v3
+        'deepseek-r1-distill-llama-70b', 'deepseek-r1',
+        # Legacy
+        'llama-3.3-70b-versatile', 'gemma2-9b-it',
+    ]
     if _groq_client:
         for model in groq_test_models:
             try:
@@ -735,7 +773,9 @@ def ai_diagnose():
                 results['groq'] = f'OK ({model}): {r.choices[0].message.content}'
                 break
             except Exception as e:
-                results[f'groq_{model}'] = str(e)[:100]
+                results[f'groq_{model}'] = str(e)[:120]
+        if 'groq' not in results:
+            results['groq_status'] = 'ALL FAILED'
     else:
         results['groq'] = 'no key'
 
