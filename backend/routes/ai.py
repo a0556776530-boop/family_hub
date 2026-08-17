@@ -545,13 +545,15 @@ add_task | add_shopping | delete_task | complete_task | get_tasks | get_shopping
 הודעה: "{msg}"
 
 חוקים:
-- add_task: כל בקשה להוסיף/ליצור משימה → {{"intent":"add_task","title":"שם המשימה"}}
-- add_shopping: כל בקשה להוסיף לקניות/לרשימה → {{"intent":"add_shopping","items":["פריט1","פריט2"]}}
-- delete_task: כל בקשה למחוק משימה → {{"intent":"delete_task","title":"שם"}}
-- complete_task: כל בקשה לסמן משימה כבוצע/הושלם → {{"intent":"complete_task","title":"שם"}}
-- get_tasks: כל בקשה לראות/להציג משימות → {{"intent":"get_tasks"}}
-- get_shopping: כל בקשה לראות רשימת קניות → {{"intent":"get_shopping"}}
-- other: שאלה, שיחה, מתכון, מידע, כל דבר אחר → {{"intent":"other"}}
+- add_task: בקשה להוסיף/ליצור משימה → {{"intent":"add_task","title":"שם המשימה המדויק"}}
+  ⚠️ שמור תחיליות ל׳ מ׳ ב׳ כחלק מהכותרת! "לתת נשיקה" ≠ "תת נשיקה". "לנקות" ≠ "נקות".
+  דוגמה: "תצור משימה לתת נשיקה לדבורה" → {{"intent":"add_task","title":"לתת נשיקה לדבורה"}}
+- add_shopping: בקשה להוסיף לקניות/לרשימה → {{"intent":"add_shopping","items":["פריט1","פריט2"]}}
+- delete_task: בקשה למחוק משימה → {{"intent":"delete_task","title":"שם"}}
+- complete_task: בקשה לסמן משימה כבוצע/הושלם → {{"intent":"complete_task","title":"שם"}}
+- get_tasks: בקשה לראות/להציג משימות → {{"intent":"get_tasks"}}
+- get_shopping: בקשה לראות רשימת קניות → {{"intent":"get_shopping"}}
+- other: שאלה, תלונה, שיחה, מתכון, מידע, תיקון, כל דבר שאינו פקודה ישירה → {{"intent":"other"}}
 
 JSON:"""
 
@@ -676,6 +678,20 @@ def _keyword_parse_basic(message, user):
     return None, None
 
 
+# Explicit Hebrew action verbs — only these allow tool use / classifier
+_ACTION_RE = re.compile(
+    r'(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|'
+    r'רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|שים|תשים|'
+    r'תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|'
+    r'סמן|תסמן|בצע|תבצע|השלם|תשלים|'
+    r'תחפש|חפש|תחפשי|חפשי|'
+    r'אשמח\s+(?:אם\s+)?(?:ש)?ת(?:וסיף|כניס|צור)|'
+    r'(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|'
+    r'(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!ל(?:עשות|לעשות)))',
+    re.IGNORECASE
+)
+
+
 # ─── Chat endpoint ──────────────────────────────────────────────────────────
 
 @ai_bp.route('/chat', methods=['POST'])
@@ -690,13 +706,18 @@ def ai_chat():
 
     data    = request.get_json() or {}
     message = (data.get('message') or '').strip()
-
     history = data.get('history') or []
 
-    # Intent classifier: ~200 tokens, understands any natural Hebrew phrasing
-    ci_reply, ci_actions = _classify_and_execute(message, user)
-    if ci_reply:
-        return jsonify({'reply': ci_reply, 'actions': ci_actions or []}), 200
+    # Only allow tools/classifier when message has an explicit action verb.
+    # Questions, complaints, corrections → text-only path (zero Groq tokens).
+    frontend_no_tools = data.get('no_tools', False)
+    use_tools = bool(_ACTION_RE.search(message)) and not frontend_no_tools
+
+    if use_tools:
+        # Intent classifier: ~80 tokens, understands natural Hebrew phrasing
+        ci_reply, ci_actions = _classify_and_execute(message, user)
+        if ci_reply:
+            return jsonify({'reply': ci_reply, 'actions': ci_actions or []}), 200
 
     if not message:
         return jsonify({'error': 'missing_message'}), 400
@@ -758,17 +779,25 @@ def ai_chat():
         raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
     try:
-        response, used_model = _call_with_fallback(
-            messages=messages,
-            tools=TOOLS,
-            tool_choice='auto',
-            temperature=0.6,
-            max_tokens=2048,
-        )
+        if use_tools:
+            response, used_model = _call_with_fallback(
+                messages=messages,
+                tools=TOOLS,
+                tool_choice='auto',
+                temperature=0.6,
+                max_tokens=2048,
+            )
+        else:
+            # No tools — text only. Saves Groq tokens, prevents accidental tool calls.
+            response, used_model = _call_with_fallback(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1024,
+            )
 
         choice = response.choices[0]
 
-        if choice.message.tool_calls:
+        if use_tools and choice.message.tool_calls:
             messages.append({
                 'role':       'assistant',
                 'content':    choice.message.content or '',
@@ -814,12 +843,13 @@ def ai_chat():
 
     except Exception as e:
         err = str(e)
-        # Last resort: try keyword-based parsing (no tokens at all)
-        kw_reply, kw_actions = _classify_and_execute(message, user)
-        if not kw_reply:
-            kw_reply, kw_actions = _keyword_parse_basic(message, user)
-        if kw_reply:
-            return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
+        # Last resort: keyword parsing only for action messages
+        if use_tools:
+            kw_reply, kw_actions = _classify_and_execute(message, user)
+            if not kw_reply:
+                kw_reply, kw_actions = _keyword_parse_basic(message, user)
+            if kw_reply:
+                return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
 
         if 'גבול' in err or 'מחר' in err:
             user_msg = err + '\n\n💡 פקודות פשוטות עדיין עובדות: "תוסיף משימה X", "תוסיף X לקניות", "מה המשימות?"'

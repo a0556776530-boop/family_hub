@@ -375,7 +375,10 @@ export default function AiAssistant() {
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({ role: m.role, content: m.content }))
 
-      const res = await api.post('/api/ai/chat', { message: msg, history })
+      // No action verb detected → tell backend: text-only, no tools
+      const hasActionVerb = ADD_VERBS.test(msg) || WANT_ADD.test(msg) ||
+                            DELETE_VERBS.test(msg) || DONE_VERBS.test(msg)
+      const res = await api.post('/api/ai/chat', { message: msg, history, no_tools: !hasActionVerb })
       setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply, actions: res.data.actions || [] }])
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: err?.response?.data?.message || 'משהו השתבש, נסה שוב.', actions: [] }])
