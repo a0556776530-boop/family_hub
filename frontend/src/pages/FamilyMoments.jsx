@@ -107,6 +107,7 @@ export default function FamilyMoments() {
                   moment={m}
                   idx={idx}
                   currentUserId={user?.id}
+                  userRole={user?.role}
                   onOpen={() => openLightbox(idx)}
                   onDelete={remove}
                   deleting={deleting}
@@ -124,6 +125,7 @@ export default function FamilyMoments() {
           moments={moments}
           index={lightbox}
           currentUserId={user?.id}
+          userRole={user?.role}
           onClose={closeLightbox}
           onPrev={prevPhoto}
           onNext={nextPhoto}
@@ -195,8 +197,8 @@ function MediaThumb({ src, isVideo, alt, minHeight, onLoad }) {
 }
 
 // ── Gallery Card ──────────────────────────────────────────────────────────────
-function GalleryCard({ moment, idx, currentUserId, onOpen, onDelete, deleting, isFeatured }) {
-  const canDelete = moment.uploader_id === currentUserId
+function GalleryCard({ moment, idx, currentUserId, userRole, onOpen, onDelete, deleting, isFeatured }) {
+  const canDelete = moment.uploader_id === currentUserId || userRole === 'admin' || userRole === 'parent'
   const [loaded, setLoaded] = useState(false)
   const isVideo = moment.resource_type === 'video'
 
@@ -249,9 +251,9 @@ function GalleryCard({ moment, idx, currentUserId, onOpen, onDelete, deleting, i
 }
 
 // ── Lightbox ──────────────────────────────────────────────────────────────────
-function Lightbox({ moments, index, currentUserId, onClose, onPrev, onNext, onDelete, deleting }) {
+function Lightbox({ moments, index, currentUserId, userRole, onClose, onPrev, onNext, onDelete, deleting }) {
   const m = moments[index]
-  const canDelete = m?.uploader_id === currentUserId
+  const canDelete = m?.uploader_id === currentUserId || userRole === 'admin' || userRole === 'parent'
   const startX = useRef(null)
 
   const onTouchStart = (e) => { startX.current = e.touches[0].clientX }
