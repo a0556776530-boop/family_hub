@@ -689,6 +689,50 @@ _ACTION_RE = re.compile(
 )
 
 
+# ─── Diagnostics endpoint ────────────────────────────────────────────────────
+
+@ai_bp.route('/diagnose', methods=['GET'])
+def ai_diagnose():
+    """Test each AI provider and return status — no auth needed for debugging."""
+    import sys
+    results = {}
+
+    # Test Gemini key1
+    for label, client in [('gemini_key1', _gemini_client), ('gemini_key2', _gemini_client2)]:
+        if not client:
+            results[label] = 'no key'
+            continue
+        for model in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+            try:
+                r = client.chat.completions.create(
+                    model=model,
+                    messages=[{'role': 'user', 'content': 'say ok'}],
+                    max_tokens=5,
+                )
+                results[label] = f'OK ({model}): {r.choices[0].message.content}'
+                break
+            except Exception as e:
+                results[f'{label}_{model}'] = str(e)[:120]
+
+    # Test Groq
+    if _groq_client:
+        for model in ['llama-3.1-8b-instant', 'llama3-8b-8192']:
+            try:
+                r = _groq_client.chat.completions.create(
+                    model=model,
+                    messages=[{'role': 'user', 'content': 'say ok'}],
+                    max_tokens=5,
+                )
+                results['groq'] = f'OK ({model}): {r.choices[0].message.content}'
+                break
+            except Exception as e:
+                results[f'groq_{model}'] = str(e)[:120]
+    else:
+        results['groq'] = 'no key'
+
+    return jsonify(results), 200
+
+
 # ─── Chat endpoint ──────────────────────────────────────────────────────────
 
 @ai_bp.route('/chat', methods=['POST'])
