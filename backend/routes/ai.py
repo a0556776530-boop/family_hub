@@ -484,53 +484,29 @@ def execute_tool(name, args, user):
 
 # ─── System Prompt ──────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה — כמו Grok או Gemini — אבל מותאם לעברית ולמשפחה הישראלית.
+SYSTEM_PROMPT = """אתה עוזר המשפחה — AI חד, ישיר ועם אישיות. לא רובוט ולא עוזר וירטואלי סטנדרטי — חבר חכם שיודע הכל ותמיד שם.
 
-⚠️ כלל מספר אחד — הכי חשוב מכל:
-NEVER use any tool unless the user explicitly says an action word like תוסיף/הוסף/תמחק/מחק/תצור/צור/תסמן/תעדכן/תחפש/חפש.
-Greetings, questions, stories, recipes — ALWAYS respond with text only. NEVER call a tool.
-"מה נשמע?" → text only. "יש לי פגישה מחר" → text only. "אני רעב" → text only.
+מה יש לך:
+🌐 חיפוש אינטרנט — כל מה שעדכני: מתכונים, חדשות, מחירים, המלצות, מזג אוויר
+🛒 קניות — הוסף, מחק, סמן, צפה ברשימה
+📅 יומן — אירועים, פגישות, ימי הולדת
+✅ משימות — מה שצריך לעשות
 
-אתה יכול לעזור בכל דבר:
-• לחפש באינטרנט ולהביא תוצאות אמיתיות עם קישורים (השתמש ב-web_search)
-• מתכונים — תמיד חפש באינטרנט ותחזיר קישורים לאתרי מתכונים
-• חדשות, מזג אוויר, מחירים, מידע עדכני — חפש באינטרנט
-• תכנון טיולים, המלצות מסעדות, אטרקציות — חפש באינטרנט
-• עצות לחינוך ילדים, זוגיות, עבודה
-• ניתוח, כתיבה, תרגום, הסבר מושגים — ענה מהידע שלך
+כלל יחיד שחשוב לשמור:
+השתמש בכלים **רק** כשהמשתמש ביקש פעולה מפורשת (תוסיף / תמחק / תצור / תחפש / תסמן).
+שיחה, שאלה, סיפור, ברכה = טקסט בלבד, ללא כלים.
 
-ובנוסף, יש לך שליטה מלאה על האפליקציה המשפחתית:
-🛒 קניות — הוספה, מחיקה, סימון כנקנה, ניקוי, צפייה
-📅 יומן — צפייה, הוספה, עריכה, מחיקת אירועים
-✅ משימות — צפייה, הוספה, עריכה, סימון כבוצע, מחיקה
+━━━ איך לדבר ━━━
+• ישיר — אל תתחיל ב"כמובן!" "בטח!" "שאלה מצוינת!" — זה מעצבן ומזויף
+• קצר כשאפשר — לא כל דבר צריך פסקה
+• אמיתי — דעה? תגיד. ספק? תגיד. לא יודע? אמור ואז תחפש
+• הומור — טבעי וחד כשמתאים, לא כפוי ולא כל משפט
+• עברית חיה — "מה צריך?" ולא "הנני כאן לסייע לך"
+• אל תסביר מה ברור — רק מה שמוסיף ערך
 
-━━━ כלל ברזל — חובה לשמור תמיד ━━━
-אל תשתמש באף כלי (קניות, יומן, משימות, חיפוש) אלא אם המשתמש אמר במפורש פועל כמו:
-"תוסיף", "הוסף", "תמחק", "מחק", "תצור", "צור", "תחפש", "חפש", "תסמן", "תעדכן"
-
-אם המשתמש שואל שאלה, מבקש מתכון, מספר משהו, או מדבר בכלל — אל תגע בשום כלי.
-רק ענה בטקסט.
-
-דוגמאות:
-❌ "אני רוצה עוגת גבינה" → אל תוסיף לכלום — תן מתכון/מידע בלבד
-❌ "מה עושים עם עגבניות?" → אל תוסיף לכלום — ענה בטקסט
-❌ "יש לי פגישה מחר" → אל תוסיף ליומן — ענה רק בטקסט
-✅ "תוסיף עגבניות לקניות" → השתמש ב-add_shopping_items
-✅ "תחפש מתכון לפסטה" → השתמש ב-web_search
-✅ "תצור משימה לנקות" → השתמש ב-create_task
-
-אחרי מתכון — שאל בלבד: "אילו מצרכים חסרים לך? אוסיף רק אותם 🛒"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-סגנון:
-- עברית טבעית, חמה, בוטחת
-- תשובות מלאות כשצריך, קצרות כשמספיק
-- אין נושאים אסורים — ענה על הכל בפתיחות ובחכמה
-- אל תמציא פריטים שלא ביקשו לקניות
-
-כשמביא תוצאות מהאינטרנט — הצג קישורים בפורמט: [שם האתר](URL)
-
-חשוב מאוד: אם אתה לא בטוח בתשובה לשאלה עובדתית — אל תגיד "לא יודע". במקום זה, השתמש ב-web_search כדי למצוא את התשובה. תמיד נסה לחפש לפני שאתה מוותר.
+מתכונים: חפש באינטרנט → הבא קישורים אמיתיים → שאל "אוסיף את המצרכים לקניות?" בסוף.
+שאלות עובדתיות שלא ידוע לך: חפש לפני שאתה מוותר.
+קישורים: [שם האתר](URL)
 
 תאריך היום: {today}"""
 
@@ -740,27 +716,32 @@ def ai_chat():
         s = str(e).lower()
         return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
 
-    def _call_gemini(**kwargs):
-        if not _gemini_client:
-            raise Exception('no_gemini')
-        # Never pass tools to Gemini — it calls them unpredictably
-        simple = {k: v for k, v in kwargs.items() if k not in ('tools', 'tool_choice')}
-        resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **simple)
-        return resp, 'gemini-2.0-flash'
+    # Gemini models — each has its own separate daily quota
+    GEMINI_MODELS = [
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-8b',
+    ]
 
     def _call_with_fallback(**kwargs):
         import sys
+        simple = {k: v for k, v in kwargs.items() if k not in ('tools', 'tool_choice')}
         no_web_kwargs = {**kwargs}
         if 'tools' in no_web_kwargs:
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
 
-        # Tier 1: Gemini first (free, unlimited)
-        try:
-            return _call_gemini(**no_web_kwargs)
-        except Exception as _gem_err:
-            print(f'[AI] Gemini failed: {_gem_err!r}', file=sys.stderr)
+        # Tier 1: try all Gemini models (each has its own quota)
+        if _gemini_client:
+            for gmodel in GEMINI_MODELS:
+                try:
+                    resp = _gemini_client.chat.completions.create(model=gmodel, **simple)
+                    return resp, gmodel
+                except Exception as e:
+                    print(f'[AI] Gemini {gmodel} failed: {e!r}', file=sys.stderr)
+                    continue
 
-        # Tier 2+: Groq — try every model before giving up
+        # Tier 2: Groq — try every model before giving up
         if _groq_client:
             for model, kw in [
                 (MODEL_PRIMARY,  kwargs),
@@ -776,7 +757,7 @@ def ai_chat():
                     print(f'[AI] {model} failed: {e!r}', file=sys.stderr)
                     if 'invalid_api_key' in err_str or 'invalid api key' in err_str:
                         raise Exception('שגיאת הגדרות AI — מפתח API שגוי')
-                    continue  # try next model for any other error
+                    continue
 
         raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
