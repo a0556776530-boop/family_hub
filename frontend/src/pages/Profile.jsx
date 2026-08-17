@@ -365,6 +365,17 @@ export default function Profile() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
           </button>
+          {user?.avatar_url && (
+            <button onClick={async () => {
+              try { await api.delete('/api/auth/avatar'); await refreshUser(); showToast('תמונה הוסרה') }
+              catch { showToast('שגיאה', 'error') }
+            }}
+              className="absolute -bottom-1 -right-1 w-8 h-8 bg-red-500 rounded-full shadow-md flex items-center justify-center border-2 border-white">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onAvatarChange} />
         </div>
 

@@ -156,6 +156,15 @@ def forgot_password():
     return jsonify({'message': 'הסיסמה שונתה בהצלחה'}), 200
 
 
+@auth_bp.route('/avatar', methods=['DELETE'])
+@require_auth
+def delete_avatar():
+    user = request.current_user
+    mongo.db.users.update_one({'_id': user['_id']}, {'$unset': {'avatar_url': ''}})
+    updated = mongo.db.users.find_one({'_id': user['_id']})
+    return jsonify({'user': user_public(updated)}), 200
+
+
 @auth_bp.route('/avatar', methods=['POST'])
 @require_auth
 def update_avatar():
