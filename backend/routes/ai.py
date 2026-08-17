@@ -708,8 +708,14 @@ def ai_chat():
         if 'tools' in no_web_kwargs:
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
 
+        # Tier 1: Gemini first (free, unlimited)
+        try:
+            return _call_gemini(**no_web_kwargs)
+        except Exception:
+            pass
+
+        # Tier 2+: Groq fallback
         if _groq_client:
-            # Tier 1+2: full Groq models with all tools
             for model in (MODEL_PRIMARY, MODEL_FALLBACK):
                 try:
                     return _call(model, **kwargs), model
@@ -717,7 +723,6 @@ def ai_chat():
                     if _is_retryable(e):
                         continue
                     raise
-            # Tier 3+4+5: Groq fallback models without web_search
             for model in (MODEL_BASIC, MODEL_EXTRA1, MODEL_EXTRA2):
                 try:
                     return _call(model, **no_web_kwargs), model
@@ -725,12 +730,6 @@ def ai_chat():
                     if _is_retryable(e):
                         continue
                     raise
-
-        # Final fallback: Gemini (free, 1.5M tokens/day)
-        try:
-            return _call_gemini(**no_web_kwargs)
-        except Exception:
-            pass
 
         raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
