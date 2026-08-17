@@ -55,20 +55,19 @@ function detectIntent(msg) {
   const isTask  = TASK_CTX.test(m)
 
   // ── Add task ──────────────────────────────────────────────────────────────
-  if ((hasAdd || hasDone === false) && isTask && !isShop) {
-    // Extract title: everything after "משימה/תזכורת" keyword
+  if (hasAdd && isTask && !isShop) {
+    // Extract title: everything after "משימה/תזכורת" keyword, then strip noise
     let title = m.replace(/^.*?(?:משימ[הות]|תזכורת)\s*/i, '').trim()
+    title = stripNoise(title)
     if (!title || title.length < 2) title = stripNoise(m)
     if (title && title.length > 1) return { intent: 'add_task', title }
   }
 
   // ── Add shopping ──────────────────────────────────────────────────────────
   if (hasAdd && isShop) {
-    // Extract items: content between verb and shop context word
+    // Extract items: remove everything from shopping context word onward
     let raw = m
-    // Remove everything after shop context word
-    raw = raw.replace(/\s*(?:לקניות|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|לקנות).*/i, '')
-    // Remove verb and noise from start
+    raw = raw.replace(/\s*(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות).*/i, '')
     raw = stripNoise(raw)
     const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
     if (items.length) return { intent: 'add_shopping', items }

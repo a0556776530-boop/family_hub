@@ -486,6 +486,11 @@ def execute_tool(name, args, user):
 
 SYSTEM_PROMPT = """אתה עוזר AI חכם, ידידותי ורב-עוצמה — כמו Grok או Gemini — אבל מותאם לעברית ולמשפחה הישראלית.
 
+⚠️ כלל מספר אחד — הכי חשוב מכל:
+NEVER use any tool unless the user explicitly says an action word like תוסיף/הוסף/תמחק/מחק/תצור/צור/תסמן/תעדכן/תחפש/חפש.
+Greetings, questions, stories, recipes — ALWAYS respond with text only. NEVER call a tool.
+"מה נשמע?" → text only. "יש לי פגישה מחר" → text only. "אני רעב" → text only.
+
 אתה יכול לעזור בכל דבר:
 • לחפש באינטרנט ולהביא תוצאות אמיתיות עם קישורים (השתמש ב-web_search)
 • מתכונים — תמיד חפש באינטרנט ותחזיר קישורים לאתרי מתכונים
@@ -552,17 +557,39 @@ JSON:"""
 
 
 def _classify_and_execute(message, user):
-    """Tiny LLM call (~200 tokens) to understand intent, then execute locally."""
-    if not _groq_client:
+    """Tiny LLM call (~80 tokens) to understand intent, then execute locally.
+    Tries Groq first (faster), then Gemini as fallback."""
+    raw = None
+    prompt_msgs = [{'role': 'user', 'content': _INTENT_PROMPT.format(msg=message)}]
+
+    if _groq_client:
+        try:
+            resp = _groq_client.chat.completions.create(
+                model=MODEL_FALLBACK,
+                messages=prompt_msgs,
+                temperature=0,
+                max_tokens=80,
+            )
+            raw = resp.choices[0].message.content.strip()
+        except Exception:
+            pass
+
+    if not raw and _gemini_client:
+        try:
+            resp = _gemini_client.chat.completions.create(
+                model='gemini-2.0-flash',
+                messages=prompt_msgs,
+                temperature=0,
+                max_tokens=80,
+            )
+            raw = resp.choices[0].message.content.strip()
+        except Exception:
+            pass
+
+    if not raw:
         return None, None
+
     try:
-        resp = _groq_client.chat.completions.create(
-            model=MODEL_FALLBACK,
-            messages=[{'role': 'user', 'content': _INTENT_PROMPT.format(msg=message)}],
-            temperature=0,
-            max_tokens=80,
-        )
-        raw = resp.choices[0].message.content.strip()
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         if not m:
             return None, None
@@ -695,13 +722,10 @@ def ai_chat():
     def _call_gemini(**kwargs):
         if not _gemini_client:
             raise Exception('no_gemini')
+        # Never pass tools to Gemini — it calls them unpredictably
         simple = {k: v for k, v in kwargs.items() if k not in ('tools', 'tool_choice')}
-        try:
-            resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **kwargs)
-            return resp, 'gemini-2.0-flash'
-        except Exception:
-            resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **simple)
-            return resp, 'gemini-2.0-flash'
+        resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **simple)
+        return resp, 'gemini-2.0-flash'
 
     def _call_with_fallback(**kwargs):
         no_web_kwargs = {**kwargs}
