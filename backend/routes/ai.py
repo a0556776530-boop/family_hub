@@ -623,27 +623,53 @@ def _classify_and_execute(message, user):
     return None, None
 
 
-# ─── Basic regex fallback (zero tokens, absolute last resort) ─────────────────
+# ─── Fast regex parser (zero LLM calls — instant response) ───────────────────
 
 def _keyword_parse_basic(message, user):
-    """Simple regex for when ALL LLM models are down — covers only obvious patterns."""
+    """Zero-LLM regex for common commands — runs before any AI call for instant results."""
     msg = message.strip()
-    # Add task: "תוסיף משימה X"
-    m = re.search(r'(?:תוסיף|הוסף|צור)\s+(?:לי\s+)?משימה\s+(.+)', msg, re.IGNORECASE)
+
+    # ── Shopping: "תוסיף X לקניות/לרשימה/לסופר" ──────────────────────────
+    m = re.search(
+        r'(?:תוסיף|הוסף|תכניס|הכנס|תרשום|רשום)\s+(.+?)\s+'
+        r'(?:לקניות|לרשימ(?:ה|ת)(?:\s+(?:ה)?קניות)?|למכולת|לסופר|לחנות)',
+        msg, re.IGNORECASE)
     if m:
-        title = m.group(1).strip().rstrip('?!.')
-        if title:
-            result = execute_tool('create_task', {'title': title}, user)
-            if result.get('created'):
-                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
-    # Add shopping: "תוסיף X לקניות"
-    m = re.search(r'(?:תוסיף|הוסף)\s+(.+?)\s+לקניות', msg, re.IGNORECASE)
-    if m:
-        items = [i.strip() for i in re.split(r'[,ו]', m.group(1)) if i.strip()]
+        raw   = m.group(1).strip()
+        items = [i.strip() for i in re.split(r'[,וְ\n]+', raw) if i.strip() and len(i.strip()) > 1]
         if items:
             result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in items]}, user)
             if result.get('added', 0) > 0:
-                return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
+                names = ', '.join(result['items'])
+                return f'🛒 נוסף לקניות: {names}', [{'tool': 'add_shopping_items', 'result': result}]
+
+    # ── Task: "תוסיף/צור משימה X" ────────────────────────────────────────
+    m = re.search(r'(?:תוסיף|הוסף|צור|תצור|תיצור)\s+(?:לי\s+)?משימה\s+(.+)', msg, re.IGNORECASE)
+    if m:
+        title = m.group(1).strip().rstrip('?!.')
+        if title and len(title) > 1:
+            result = execute_tool('create_task', {'title': title}, user)
+            if result.get('created'):
+                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
+
+    # ── Show tasks: "מה המשימות / תראה משימות" ───────────────────────────
+    if re.search(r'(?:מה|תראה|הצג|תציג)\s+(?:ה)?משימות|(?:אילו|יש)\s+משימות', msg, re.IGNORECASE):
+        result = execute_tool('get_tasks', {}, user)
+        tasks  = result.get('tasks', [])
+        if not tasks:
+            return 'אין משימות פתוחות כרגע 🎉', []
+        lines = '\n'.join(f'• {t["title"]}' for t in tasks[:10])
+        return f'📋 **משימות פתוחות ({len(tasks)}):**\n{lines}', []
+
+    # ── Show shopping: "מה יש בקניות / תראה רשימה" ──────────────────────
+    if re.search(r'(?:מה|תראה|הצג|תציג)\s+(?:יש\s+)?(?:ב)?(?:קניות|רשימ(?:ה|ת))|רשימת\s+קניות', msg, re.IGNORECASE):
+        result = execute_tool('get_shopping_list', {}, user)
+        items  = result.get('items', [])
+        if not items:
+            return 'רשימת הקניות ריקה 🛒', []
+        lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
+        return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
+
     return None, None
 
 
@@ -683,7 +709,11 @@ def ai_chat():
     use_tools = bool(_ACTION_RE.search(message)) and not frontend_no_tools
 
     if use_tools:
-        # Intent classifier: ~80 tokens, understands natural Hebrew phrasing
+        # Fast path: pure regex, zero LLM calls — instant for common commands
+        kw_reply, kw_actions = _keyword_parse_basic(message, user)
+        if kw_reply:
+            return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
+        # Fallback: LLM classifier for complex phrasing (~80 tokens, fast)
         ci_reply, ci_actions = _classify_and_execute(message, user)
         if ci_reply:
             return jsonify({'reply': ci_reply, 'actions': ci_actions or []}), 200
