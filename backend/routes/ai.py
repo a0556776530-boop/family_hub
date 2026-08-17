@@ -40,11 +40,11 @@ except Exception:
 # AI is available if at least one model provider is configured
 _AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
 
-MODEL_PRIMARY  = 'llama-3.3-70b-versatile'
-MODEL_FALLBACK = 'mixtral-8x7b-32768'
-MODEL_BASIC    = 'gemma2-9b-it'
-MODEL_EXTRA1   = 'deepseek-r1-distill-llama-70b'
-MODEL_EXTRA2   = 'qwen-qwq-32b'
+MODEL_PRIMARY  = 'openai/gpt-oss-120b'
+MODEL_FALLBACK = 'qwen/qwen3.6-27b'
+MODEL_BASIC    = 'groq/compound'
+MODEL_EXTRA1   = 'openai/gpt-oss-20b'
+MODEL_EXTRA2   = 'compound-beta'
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -836,11 +836,11 @@ def ai_chat():
 
     # Gemini models — try latest first
     GEMINI_MODELS = [
-        'gemini-2.5-flash-preview-05-20',
+        'gemini-3.5-flash',
         'gemini-2.5-flash',
-        'gemini-2.0-flash-exp',
-        'gemini-2.0-flash-thinking-exp',
-        'gemini-exp-1206',
+        'gemini-3.1-flash-preview',
+        'gemini-2.5-pro',
+        'gemini-3.1-flash-lite',
     ]
 
     def _call_with_fallback(**kwargs):
