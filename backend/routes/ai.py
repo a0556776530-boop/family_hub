@@ -13,10 +13,9 @@ try:
     from groq import Groq
     _GROQ_KEY = os.environ.get('GROQ_API_KEY', '')
     _groq_client = Groq(api_key=_GROQ_KEY) if _GROQ_KEY else None
-    _AI_AVAILABLE = bool(_GROQ_KEY)
 except Exception:
     _groq_client = None
-    _AI_AVAILABLE = False
+    _GROQ_KEY = ''
 
 try:
     from tavily import TavilyClient
@@ -34,6 +33,10 @@ try:
     ) if _GEMINI_KEY else None
 except Exception:
     _gemini_client = None
+    _GEMINI_KEY = ''
+
+# AI is available if at least one model provider is configured
+_AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY)
 
 MODEL_PRIMARY  = 'llama-3.3-70b-versatile'              # 100K tokens/day
 MODEL_FALLBACK = 'llama-3.1-8b-instant'                 # 500K tokens/day
@@ -689,45 +692,45 @@ def ai_chat():
         s = str(e).lower()
         return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
 
+    def _call_gemini(**kwargs):
+        if not _gemini_client:
+            raise Exception('no_gemini')
+        simple = {k: v for k, v in kwargs.items() if k not in ('tools', 'tool_choice')}
+        try:
+            resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **kwargs)
+            return resp, 'gemini-2.0-flash'
+        except Exception:
+            resp = _gemini_client.chat.completions.create(model='gemini-2.0-flash', **simple)
+            return resp, 'gemini-2.0-flash'
+
     def _call_with_fallback(**kwargs):
-        # Tier 1+2: full models with all tools
-        for model in (MODEL_PRIMARY, MODEL_FALLBACK):
-            try:
-                return _call(model, **kwargs), model
-            except Exception as e:
-                if _is_retryable(e):
-                    continue
-                raise
-        # Tier 3+4+5: fallback models without web_search (app control still works)
         no_web_kwargs = {**kwargs}
         if 'tools' in no_web_kwargs:
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
-        for model in (MODEL_BASIC, MODEL_EXTRA1, MODEL_EXTRA2):
-            try:
-                return _call(model, **no_web_kwargs), model
-            except Exception as e:
-                if _is_retryable(e):
-                    continue
-                raise
 
-        # Final fallback: Gemini via OpenAI-compatible endpoint
-        if _gemini_client:
-            gemini_kwargs = {**no_web_kwargs}
-            try:
-                resp = _gemini_client.chat.completions.create(
-                    model='gemini-1.5-flash', **gemini_kwargs
-                )
-                return resp, 'gemini-1.5-flash'
-            except Exception:
+        if _groq_client:
+            # Tier 1+2: full Groq models with all tools
+            for model in (MODEL_PRIMARY, MODEL_FALLBACK):
                 try:
-                    # Try without tools if tools failed
-                    simple = {k: v for k, v in gemini_kwargs.items() if k != 'tools' and k != 'tool_choice'}
-                    resp = _gemini_client.chat.completions.create(
-                        model='gemini-1.5-flash', **simple
-                    )
-                    return resp, 'gemini-1.5-flash'
-                except Exception:
-                    pass
+                    return _call(model, **kwargs), model
+                except Exception as e:
+                    if _is_retryable(e):
+                        continue
+                    raise
+            # Tier 3+4+5: Groq fallback models without web_search
+            for model in (MODEL_BASIC, MODEL_EXTRA1, MODEL_EXTRA2):
+                try:
+                    return _call(model, **no_web_kwargs), model
+                except Exception as e:
+                    if _is_retryable(e):
+                        continue
+                    raise
+
+        # Final fallback: Gemini (free, 1.5M tokens/day)
+        try:
+            return _call_gemini(**no_web_kwargs)
+        except Exception:
+            pass
 
         raise Exception('הגענו לגבול השימוש היומי — נסה שוב מחר בבוקר 🌅')
 
