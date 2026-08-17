@@ -33,11 +33,12 @@ export default function Header() {
               </svg>
             </button>
           )}
-          <div className="w-9 h-9 rounded-full bg-white/25 ring-2 ring-white/50 flex items-center justify-center shrink-0 overflow-hidden">
+          <button onClick={() => navigate('/profile')}
+            className="w-9 h-9 rounded-full bg-white/25 ring-2 ring-white/50 flex items-center justify-center shrink-0 overflow-hidden active:scale-90 transition-transform">
             {user?.avatar_url
               ? <img src={user.avatar_url} className="w-full h-full object-cover" alt="" />
               : <span className="text-white font-bold text-sm">{initial}</span>}
-          </div>
+          </button>
           <div className="min-w-0">
             <p className="text-blue-100 text-xs truncate">שלום, {user?.name?.split(' ')[0]} 👋</p>
             <h1 className="text-white font-bold text-base leading-tight truncate">
