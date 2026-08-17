@@ -756,8 +756,9 @@ def ai_chat():
         # Tier 1: Gemini first (free, unlimited)
         try:
             return _call_gemini(**no_web_kwargs)
-        except Exception:
-            pass
+        except Exception as _gem_err:
+            import sys
+            print(f'[AI] Gemini failed: {_gem_err!r}', file=sys.stderr)
 
         # Tier 2+: Groq fallback
         if _groq_client:
