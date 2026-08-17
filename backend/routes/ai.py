@@ -40,11 +40,11 @@ except Exception:
 # AI is available if at least one model provider is configured
 _AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
 
-MODEL_PRIMARY  = 'llama-3.3-70b-versatile'              # 100K tokens/day
-MODEL_FALLBACK = 'llama-3.1-8b-instant'                 # 500K tokens/day
-MODEL_BASIC    = 'llama3-8b-8192'                       # separate 8b quota
-MODEL_EXTRA1   = 'deepseek-r1-distill-llama-70b'        # separate deepseek quota
-MODEL_EXTRA2   = 'qwen-qwq-32b'                         # separate qwen quota
+MODEL_PRIMARY  = 'llama-3.3-70b-versatile'
+MODEL_FALLBACK = 'mixtral-8x7b-32768'
+MODEL_BASIC    = 'gemma2-9b-it'
+MODEL_EXTRA1   = 'deepseek-r1-distill-llama-70b'
+MODEL_EXTRA2   = 'qwen-qwq-32b'
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
@@ -698,11 +698,16 @@ def ai_diagnose():
     results = {}
 
     # Test Gemini key1
+    gemini_test_models = [
+        'gemini-2.5-flash-preview-05-20', 'gemini-2.5-flash',
+        'gemini-2.0-flash-exp', 'gemini-2.0-flash-thinking-exp', 'gemini-exp-1206',
+    ]
     for label, client in [('gemini_key1', _gemini_client), ('gemini_key2', _gemini_client2)]:
         if not client:
             results[label] = 'no key'
             continue
-        for model in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']:
+        found = False
+        for model in gemini_test_models:
             try:
                 r = client.chat.completions.create(
                     model=model,
@@ -710,13 +715,17 @@ def ai_diagnose():
                     max_tokens=5,
                 )
                 results[label] = f'OK ({model}): {r.choices[0].message.content}'
+                found = True
                 break
             except Exception as e:
-                results[f'{label}_{model}'] = str(e)[:120]
+                results[f'{label}_{model}'] = str(e)[:100]
+        if not found:
+            results[f'{label}_status'] = 'ALL FAILED'
 
     # Test Groq
+    groq_test_models = ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b']
     if _groq_client:
-        for model in ['llama-3.1-8b-instant', 'llama3-8b-8192']:
+        for model in groq_test_models:
             try:
                 r = _groq_client.chat.completions.create(
                     model=model,
@@ -726,7 +735,7 @@ def ai_diagnose():
                 results['groq'] = f'OK ({model}): {r.choices[0].message.content}'
                 break
             except Exception as e:
-                results[f'groq_{model}'] = str(e)[:120]
+                results[f'groq_{model}'] = str(e)[:100]
     else:
         results['groq'] = 'no key'
 
@@ -785,13 +794,13 @@ def ai_chat():
         s = str(e).lower()
         return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
 
-    # Gemini models — each has its own separate daily quota
+    # Gemini models — try latest first
     GEMINI_MODELS = [
+        'gemini-2.5-flash-preview-05-20',
         'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-8b',
+        'gemini-2.0-flash-exp',
+        'gemini-2.0-flash-thinking-exp',
+        'gemini-exp-1206',
     ]
 
     def _call_with_fallback(**kwargs):
