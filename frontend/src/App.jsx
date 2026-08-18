@@ -57,7 +57,7 @@ function Loader() {
   )
 }
 
-function useRingListener() {
+function useRingListener(user) {
   // If the app was opened by the SW ring handler, start ringing immediately
   const [ring, setRing] = useState(() => {
     const p = new URLSearchParams(window.location.search)
@@ -76,6 +76,20 @@ function useRingListener() {
     return null
   })
 
+  // On login: check DB for an active ring session. Catches the case where the
+  // app was reopened while a ring was already active (old SW, missed push, etc.)
+  useEffect(() => {
+    if (!user) return
+    ;(async () => {
+      try {
+        const res = await api.get('/api/notifications/ring/my-status')
+        if (res.data.active) {
+          setRing(r => r || { caller: res.data.caller || 'ההורים', message: res.data.message || '' })
+        }
+      } catch {}
+    })()
+  }, [user?._id])
+
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'ring')      setRing({ caller: e.data.caller || '', message: e.data.message || '' })
@@ -89,7 +103,7 @@ function useRingListener() {
 
 function AppRoutes() {
   const { user, loading } = useAuth()
-  const [ring, stopRing] = useRingListener()
+  const [ring, stopRing] = useRingListener(user)
   usePushNotifications(user)
   useKeepAlive()
   if (loading) return <Loader />
