@@ -15,10 +15,11 @@
     "@capacitor/core": "^7.4.4",
     "@capacitor/ios": "^7.4.4",
     "@capacitor/local-notifications": "^7.0.7",
-    "@react-google-maps/api": "^2.20.4",
     "axios": "^1.17.0",
+    "leaflet": "^1.9.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.17.0",
     "socket.io-client": "^4.8.3"
   },
