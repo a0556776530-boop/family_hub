@@ -60,6 +60,7 @@ export default function RingAlert({ caller, message, onStop }) {
   const rings = pulse % 2 === 0
 
   return (
+    <>
     <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
     <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
       style={{ background: 'linear-gradient(175deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%)' }}
@@ -101,5 +102,6 @@ export default function RingAlert({ caller, message, onStop }) {
         עצור
       </button>
     </div>
+    </>
   )
 }
