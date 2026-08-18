@@ -3,19 +3,43 @@ import { useAuth } from '../context/AuthContext'
 import api from '../api/client'
 import { isWebAuthnSupported, loginWithFingerprint } from '../utils/webauthn'
 
-const LOCK_AFTER_MS = 5 * 60 * 1000 // 5 דקות ברקע → נועל מחדש
+const LOCK_AFTER_MS = 5 * 60 * 1000
 
 export default function AppLock({ children }) {
   const { user, setAuthToken, logout } = useAuth()
   const [locked, setLocked]     = useState(false)
-  const [method, setMethod]     = useState('fingerprint') // 'fingerprint' | 'password'
+  const [method, setMethod]     = useState('fingerprint')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [hasFp, setHasFp]       = useState(false)
   const autoTriggered = useRef(false)
 
-  // בדוק אם יש טביעת אצבע רשומה
+  const unlock = useCallback(() => {
+    sessionStorage.setItem('fh_last_active', Date.now().toString())
+    autoTriggered.current = false
+    setLocked(false)
+    setError('')
+    setPassword('')
+  }, [])
+
+  const handleFingerprint = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const { token, user: u } = await loginWithFingerprint(user.email, api)
+      setAuthToken(token, u)
+      unlock()
+    } catch (e) {
+      if (e.name === 'NotAllowedError') {
+        setError('בוטל — נסה שוב')
+      } else {
+        setMethod('password')
+        setError('')
+      }
+    } finally { setLoading(false) }
+  }, [user?.email, setAuthToken, unlock])
+
+  // Check if fingerprint is enrolled
   useEffect(() => {
     if (!user || !isWebAuthnSupported()) { setMethod('password'); return }
     api.get('/api/auth/webauthn/status')
@@ -26,27 +50,23 @@ export default function AppLock({ children }) {
       .catch(() => setMethod('password'))
   }, [user?.id])
 
-  // Auto-trigger fingerprint the first time the lock screen appears
+  // Auto-trigger fingerprint prompt when lock screen first appears
   useEffect(() => {
     if (!locked || !hasFp || method !== 'fingerprint' || autoTriggered.current) return
     autoTriggered.current = true
     handleFingerprint()
   }, [locked, hasFp, method, handleFingerprint])
 
-  // נעל כשהאפליקציה נטענת עם משתמש מחובר
+  // Lock on app load if user is already logged in
   useEffect(() => {
     if (!user) { setLocked(false); return }
     const lastActive = sessionStorage.getItem('fh_last_active')
-    if (!lastActive) {
-      setLocked(true)
-      return
-    }
-    if (Date.now() - parseInt(lastActive) > LOCK_AFTER_MS) {
+    if (!lastActive || Date.now() - parseInt(lastActive) > LOCK_AFTER_MS) {
       setLocked(true)
     }
   }, [user?.id])
 
-  // עדכן "פעיל אחרון" כל 30 שניות בזמן שימוש
+  // Keep "last active" timestamp while app is in use
   useEffect(() => {
     if (!user || locked) return
     const tick = () => sessionStorage.setItem('fh_last_active', Date.now().toString())
@@ -55,7 +75,7 @@ export default function AppLock({ children }) {
     return () => clearInterval(id)
   }, [user?.id, locked])
 
-  // נעל כשחוזרים מהרקע אחרי זמן מה
+  // Re-lock when returning from background after timeout
   useEffect(() => {
     const onVisible = () => {
       if (!user) return
@@ -69,33 +89,6 @@ export default function AppLock({ children }) {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [user?.id])
-
-  const unlock = () => {
-    sessionStorage.setItem('fh_last_active', Date.now().toString())
-    autoTriggered.current = false
-    setLocked(false)
-    setError('')
-    setPassword('')
-  }
-
-  const handleFingerprint = useCallback(async () => {
-    setLoading(true); setError('')
-    try {
-      const { token, user: u } = await loginWithFingerprint(user.email, api)
-      setAuthToken(token, u)
-      unlock()
-    } catch (e) {
-      if (e.name === 'NotAllowedError') {
-        // User cancelled the prompt — stay on fingerprint screen
-        setError('בוטל — נסה שוב')
-      } else {
-        // Credential not on this device or any other error — fall back to password
-        setMethod('password')
-        setError('')
-      }
-    } finally { setLoading(false) }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email])
 
   const handlePassword = async () => {
     if (!password) return
@@ -113,7 +106,6 @@ export default function AppLock({ children }) {
 
   return (
     <div className="fixed inset-0 z-[100] bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 flex flex-col items-center justify-center px-6">
-      {/* Avatar */}
       <div className="w-20 h-20 rounded-full bg-white/20 ring-4 ring-white/40 overflow-hidden flex items-center justify-center mb-4">
         {user.avatar_url
           ? <img src={user.avatar_url} className="w-full h-full object-cover" alt="" />
