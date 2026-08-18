@@ -22,7 +22,21 @@ export function setSelectedRingtone(id) {
 export function playRingtone(id, loops = 6) {
   try {
     const ctx = new AudioContext()
-    if (ctx.state === 'suspended') ctx.resume()
+
+    // Ensure context is running; if browser blocks autoplay, start on first touch/click
+    function ensureRunning() {
+      if (ctx.state !== 'running') {
+        ctx.resume().catch(() => {
+          const onGesture = () => {
+            ctx.resume().catch(() => {})
+            document.removeEventListener('touchstart', onGesture)
+            document.removeEventListener('click', onGesture)
+          }
+          document.addEventListener('touchstart', onGesture, { once: true, passive: true })
+          document.addEventListener('click', onGesture, { once: true })
+        })
+      }
+    }
 
     if (loops === 0) {
       let stopped = false
@@ -39,6 +53,7 @@ export function playRingtone(id, loops = 6) {
         )
       }
 
+      ensureRunning()
       scheduleNext(ctx.currentTime + 0.05)
 
       return {
@@ -54,6 +69,7 @@ export function playRingtone(id, loops = 6) {
     // Fixed loops — schedule everything upfront
     const schedule = buildSchedule(id, ctx.currentTime + 0.05, loops)
     const nodes    = playNotes(ctx, schedule.notes)
+    ensureRunning()
     return {
       duration: schedule.totalDuration,
       stop: () => {

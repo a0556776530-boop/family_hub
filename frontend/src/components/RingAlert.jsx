@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { playRingtone, getSelectedRingtone } from '../utils/ringtones'
+import api from '../api/client'
 
 function dismissRingNotification() {
   try {
@@ -10,30 +11,49 @@ function dismissRingNotification() {
 }
 
 export default function RingAlert({ caller, onStop }) {
-  const rtRef  = useRef(null)
+  const rtRef   = useRef(null)
+  const stopRef = useRef(null)  // always points to latest stop function
   const [pulse, setPulse] = useState(0)
 
-  useEffect(() => {
-    // 0 = infinite — rings until Stop is pressed
-    rtRef.current = playRingtone(getSelectedRingtone(), 0)
-
-    try { navigator.vibrate?.([500, 200, 500, 200, 500, 200, 500, 200, 500]) } catch {}
-
-    const pId = setInterval(() => setPulse(p => p + 1), 800)
-
-    return () => {
-      clearInterval(pId)
-      rtRef.current?.stop()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const stop = () => {
+  // Keep stopRef current on every render
+  stopRef.current = () => {
     rtRef.current?.stop()
     try { navigator.vibrate?.(0) } catch {}
     dismissRingNotification()
     onStop()
   }
+
+  useEffect(() => {
+    // Infinite loop — rings until explicitly stopped
+    rtRef.current = playRingtone(getSelectedRingtone(), 0)
+
+    // Loop vibration every 3.2 seconds (mirrors ring cadence)
+    function vibrateOnce() {
+      try { navigator.vibrate?.([500, 200, 500, 200, 500]) } catch {}
+    }
+    vibrateOnce()
+    const vibrateId = setInterval(vibrateOnce, 3200)
+
+    // Pulse animation
+    const pId = setInterval(() => setPulse(p => p + 1), 800)
+
+    // Poll backend every 2 seconds — stops immediately when sender presses stop,
+    // regardless of whether push subscription is working
+    const pollId = setInterval(async () => {
+      try {
+        const res = await api.get('/api/notifications/ring/my-status')
+        if (res.data.active === false) stopRef.current?.()
+      } catch {}
+    }, 2000)
+
+    return () => {
+      clearInterval(pId)
+      clearInterval(vibrateId)
+      clearInterval(pollId)
+      try { navigator.vibrate?.(0) } catch {}
+      rtRef.current?.stop()
+    }
+  }, [])
 
   const rings = pulse % 2 === 0
 
@@ -63,7 +83,7 @@ export default function RingAlert({ caller, onStop }) {
       <p className="relative z-10 text-blue-200 text-base mb-1 font-medium">מחפשים אותך!</p>
       <p className="relative z-10 text-white text-2xl font-extrabold mb-12">{caller || 'ההורים'}</p>
 
-      <button onClick={stop}
+      <button onClick={() => stopRef.current?.()}
         className="relative z-10 bg-white text-blue-700 font-extrabold text-lg px-12 py-4 rounded-3xl shadow-2xl active:scale-95 transition-transform">
         עצור
       </button>
