@@ -20,6 +20,7 @@ export default function RingAlert({ caller, onStop }) {
     rtRef.current?.stop()
     try { navigator.vibrate?.(0) } catch {}
     dismissRingNotification()
+    api.post('/api/notifications/ring/stop-mine').catch(() => {})  // notify parent to reset UI
     onStop()
   }
 

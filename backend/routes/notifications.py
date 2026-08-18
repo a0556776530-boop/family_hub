@@ -83,6 +83,21 @@ def unsubscribe():
     return jsonify({'message': 'בוטלו ההתראות'}), 200
 
 
+@notifications_bp.route('/ring/stop-mine', methods=['POST'])
+@require_auth
+def stop_my_ring():
+    """Child calls this when they stop the ring themselves, so the parent UI resets."""
+    user_id = str(request.current_user['_id'])
+    try:
+        mongo.db.ring_sessions.update_one(
+            {'target_user_id': user_id},
+            {'$set': {'active': False}},
+        )
+    except Exception:
+        pass
+    return jsonify({'ok': True}), 200
+
+
 @notifications_bp.route('/ring/my-status', methods=['GET'])
 @require_auth
 def ring_my_status():
@@ -97,6 +112,26 @@ def ring_my_status():
             mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
             return jsonify({'active': False}), 200
         return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
+    except Exception:
+        return jsonify({'active': False}), 200
+
+
+@notifications_bp.route('/ring/<target_user_id>/status', methods=['GET'])
+@require_auth
+def ring_status_for(target_user_id):
+    """Sender (parent) polls this to detect when child has stopped the ring."""
+    try:
+        caller = request.current_user
+        target = mongo.db.users.find_one({'_id': ObjectId(target_user_id)})
+        if not target or target.get('family_id') != caller.get('family_id'):
+            return jsonify({'active': False}), 200
+        session = mongo.db.ring_sessions.find_one({'target_user_id': target_user_id})
+        if not session or not session.get('active'):
+            return jsonify({'active': False}), 200
+        age = (datetime.datetime.utcnow() - session.get('started_at', datetime.datetime.min)).total_seconds()
+        if age > 300:
+            return jsonify({'active': False}), 200
+        return jsonify({'active': True}), 200
     except Exception:
         return jsonify({'active': False}), 200
 

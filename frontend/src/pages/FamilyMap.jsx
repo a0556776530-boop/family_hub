@@ -48,6 +48,22 @@ function useRingPhone() {
     }
   }, [])
 
+  // Poll so parent UI resets when child stops the ring on their end
+  useEffect(() => {
+    if (!activeRing) return
+    const { userId } = activeRing
+    const id = setInterval(async () => {
+      try {
+        const res = await api.get(`/api/notifications/ring/${userId}/status`)
+        if (!res.data.active) {
+          setActiveRing(null)
+          setRingDone(d => ({ ...d, [userId]: 0 }))
+        }
+      } catch {}
+    }, 2000)
+    return () => clearInterval(id)
+  }, [activeRing?.userId])
+
   const canRing = useCallback((userId) => {
     const last = ringDone[userId] || 0
     return Date.now() - last > RING_COOLDOWN_MS
