@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import time
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from bson import ObjectId
 from datetime import datetime, timezone, timedelta
@@ -39,6 +40,68 @@ except Exception:
 
 # AI is available if at least one model provider is configured
 _AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
+
+# Rate limiting: max 30 requests per minute per family
+_rate_cache: dict = {}
+
+def _check_rate(family_id: str) -> bool:
+    now   = time.time()
+    calls = [t for t in _rate_cache.get(family_id, []) if now - t < 60]
+    if len(calls) >= 30:
+        return False
+    _rate_cache[family_id] = calls + [now]
+    return True
+
+
+def _conv_id(raw) -> str | None:
+    """Safely convert raw conversation_id to string ObjectId or None."""
+    try:
+        return str(ObjectId(str(raw))) if raw else None
+    except Exception:
+        return None
+
+
+def _save_conversation(family_id, user_id, conversation_id, user_msg, assistant_msg, actions=None, sources=None):
+    """Upsert a conversation in ai_conversations. Returns the conversation _id as string."""
+    try:
+        now = datetime.now(timezone.utc)
+        user_entry = {
+            'role':      'user',
+            'content':   user_msg,
+            'timestamp': now.isoformat(),
+        }
+        assistant_entry = {
+            'role':      'assistant',
+            'content':   assistant_msg,
+            'timestamp': now.isoformat(),
+            'actions':   actions or [],
+            'sources':   [{'title': s.get('title',''), 'url': s.get('url','')} for s in (sources or [])][:4],
+        }
+        cid = _conv_id(conversation_id)
+        if cid:
+            mongo.db.ai_conversations.update_one(
+                {'_id': ObjectId(cid), 'family_id': family_id},
+                {
+                    '$push':        {'messages': {'$each': [user_entry, assistant_entry]}},
+                    '$set':         {'updated_at': now},
+                    '$setOnInsert': {'created_at': now},
+                },
+                upsert=True,
+            )
+            return cid
+        else:
+            title = user_msg[:40]
+            result = mongo.db.ai_conversations.insert_one({
+                'family_id':  family_id,
+                'user_id':    user_id,
+                'title':      title,
+                'messages':   [user_entry, assistant_entry],
+                'created_at': now,
+                'updated_at': now,
+            })
+            return str(result.inserted_id)
+    except Exception:
+        return None
 
 MODEL_PRIMARY  = 'openai/gpt-oss-120b'
 MODEL_FALLBACK = 'qwen/qwen3.6-27b'
@@ -404,10 +467,21 @@ def execute_tool(name, args, user):
 
     # ── Shopping ──────────────────────────────────────────────────────────
     if name == 'add_shopping_items':
-        docs = []
+        # Dedup: check what's already in the list
+        existing = {
+            i['name'].strip().lower()
+            for i in mongo.db.shopping_items.find(
+                {'family_id': family_id, 'done': False}, {'name': 1}
+            )
+        }
+        docs    = []
+        skipped = []
         for item in (args.get('items') or [])[:20]:
             iname = str(item.get('name', '')).strip()[:100]
             if not iname:
+                continue
+            if iname.lower() in existing:
+                skipped.append(iname)
                 continue
             cat = item.get('category', 'אחר')
             if cat not in VALID_CATEGORIES:
@@ -423,9 +497,10 @@ def execute_tool(name, args, user):
                 'added_by':   user.get('name', '').split()[0] or 'AI',
                 'created_at': now,
             })
+            existing.add(iname.lower())
         if docs:
             mongo.db.shopping_items.insert_many(docs)
-        return {'added': len(docs), 'items': [d['name'] for d in docs]}
+        return {'added': len(docs), 'items': [d['name'] for d in docs], 'skipped': skipped}
 
     elif name == 'get_shopping_list':
         items = list(mongo.db.shopping_items.find(
@@ -878,9 +953,13 @@ def ai_chat_stream():
     if not user.get('family_id'):
         return _instant_err('no family')
 
-    body        = request.get_json() or {}
-    message     = (body.get('message') or '').strip()
-    history_raw = body.get('history') or []
+    if not _check_rate(str(user.get('family_id', ''))):
+        return _instant_err('הגעת למגבלת הבקשות — נסה שוב עוד כמה שניות ⏳')
+
+    body            = request.get_json() or {}
+    message         = (body.get('message') or '').strip()
+    history_raw     = body.get('history') or []
+    conversation_id = body.get('conversation_id')
 
     def ev(obj):
         return f'data: {json.dumps(obj, ensure_ascii=False)}\n\n'
@@ -894,11 +973,13 @@ def ai_chat_stream():
         if _ACTION_RE.search(message):
             kw_reply, kw_actions = _keyword_parse_basic(message, user)
             if kw_reply:
-                yield ev({'type': 'done', 'reply': kw_reply, 'actions': kw_actions or [], 'sources': [], 'images': []})
+                cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, kw_reply, kw_actions, [])
+                yield ev({'type': 'done', 'reply': kw_reply, 'actions': kw_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
                 return
             ci_reply, ci_actions = _classify_and_execute(message, user)
             if ci_reply:
-                yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': []})
+                cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, ci_reply, ci_actions, [])
+                yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
                 return
 
         # Knowledge path: build message list with family context
@@ -919,7 +1000,8 @@ def ai_chat_stream():
 
         # Pre-search when query is clearly knowledge/recipe/search
         if _tavily_client and _SEARCH_KEYWORDS_RE.search(message):
-            yield ev({'type': 'status', 'text': '🔍 מחפש ברשת...'})
+            yield ev({'type': 'tool_start', 'name': 'web_search', 'query': message[:80]})
+            yield ev({'type': 'status', 'text': f'🔍 מחפש: {message[:50]}...'})
             try:
                 resp = _tavily_client.search(message, max_results=5, include_answer=True, include_images=True)
                 results_list = [
@@ -983,9 +1065,12 @@ def ai_chat_stream():
             )
 
         if streamed[0]:
+            final_reply = ''.join(full_text)
+            cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, final_reply, all_actions, sources)
             yield ev({
-                'type': 'done', 'reply': ''.join(full_text),
+                'type': 'done', 'reply': final_reply,
                 'actions': all_actions, 'sources': sources, 'images': images_out,
+                'conversation_id': cid,
             })
         else:
             yield ev({'type': 'error', 'message': 'הגענו לגבול השימוש — נסה שוב מחר 🌅'})
@@ -1013,9 +1098,13 @@ def ai_chat():
     if not user.get('family_id'):
         return jsonify({'error': 'no_family'}), 403
 
-    data    = request.get_json() or {}
-    message = (data.get('message') or '').strip()
-    history = data.get('history') or []
+    if not _check_rate(str(user.get('family_id', ''))):
+        return jsonify({'error': 'rate_limit', 'message': 'הגעת למגבלת הבקשות — נסה שוב עוד כמה שניות ⏳'}), 429
+
+    data            = request.get_json() or {}
+    message         = (data.get('message') or '').strip()
+    history         = data.get('history') or []
+    conversation_id = data.get('conversation_id')
 
     # Only allow tools/classifier when message has an explicit action verb.
     # Questions, complaints, corrections → text-only path (zero Groq tokens).
@@ -1026,11 +1115,13 @@ def ai_chat():
         # Fast path: pure regex, zero LLM calls — instant for common commands
         kw_reply, kw_actions = _keyword_parse_basic(message, user)
         if kw_reply:
-            return jsonify({'reply': kw_reply, 'actions': kw_actions or []}), 200
+            cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, kw_reply, kw_actions, [])
+            return jsonify({'reply': kw_reply, 'actions': kw_actions or [], 'conversation_id': cid}), 200
         # Fallback: LLM classifier for complex phrasing (~80 tokens, fast)
         ci_reply, ci_actions = _classify_and_execute(message, user)
         if ci_reply:
-            return jsonify({'reply': ci_reply, 'actions': ci_actions or []}), 200
+            cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, ci_reply, ci_actions, [])
+            return jsonify({'reply': ci_reply, 'actions': ci_actions or [], 'conversation_id': cid}), 200
 
     if not message:
         return jsonify({'error': 'missing_message'}), 400
@@ -1162,7 +1253,8 @@ def ai_chat():
             if not reply:
                 reply = 'לא הצלחתי לנסח תשובה, נסה שוב.'
 
-        return jsonify({'reply': reply, 'actions': actions}), 200
+        cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, reply, actions, [])
+        return jsonify({'reply': reply, 'actions': actions, 'conversation_id': cid}), 200
 
     except Exception as e:
         err = str(e)
@@ -1185,6 +1277,87 @@ def ai_chat():
         else:
             user_msg = 'שגיאה זמנית — נסה שוב בעוד כמה שניות 🔄'
         return jsonify({'error': 'ai_error', 'message': user_msg}), 500
+
+
+# ─── Conversation persistence endpoints ────────────────────────────────────
+
+@ai_bp.route('/conversations', methods=['GET'])
+@require_auth
+def list_conversations():
+    user = request.current_user
+    if not user.get('family_id'):
+        return jsonify({'conversations': []}), 200
+    convs = list(
+        mongo.db.ai_conversations
+        .find({'family_id': user['family_id']}, {'messages': 0})
+        .sort('updated_at', -1)
+        .limit(20)
+    )
+    return jsonify({'conversations': [
+        {
+            'id':         str(c['_id']),
+            'title':      c.get('title', ''),
+            'updated_at': c.get('updated_at', c.get('created_at', '')).isoformat() if hasattr(c.get('updated_at', ''), 'isoformat') else str(c.get('updated_at', '')),
+            'created_at': c.get('created_at', '').isoformat() if hasattr(c.get('created_at', ''), 'isoformat') else str(c.get('created_at', '')),
+        }
+        for c in convs
+    ]}), 200
+
+
+@ai_bp.route('/conversations/<conv_id>', methods=['GET'])
+@require_auth
+def get_conversation(conv_id):
+    user = request.current_user
+    try:
+        conv = mongo.db.ai_conversations.find_one(
+            {'_id': ObjectId(conv_id), 'family_id': user.get('family_id', '')}
+        )
+    except Exception:
+        return jsonify({'error': 'not_found'}), 404
+    if not conv:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({
+        'id':       str(conv['_id']),
+        'title':    conv.get('title', ''),
+        'messages': conv.get('messages', []),
+    }), 200
+
+
+@ai_bp.route('/conversations/<conv_id>', methods=['DELETE'])
+@require_auth
+def delete_conversation(conv_id):
+    user = request.current_user
+    try:
+        mongo.db.ai_conversations.delete_one(
+            {'_id': ObjectId(conv_id), 'family_id': user.get('family_id', '')}
+        )
+    except Exception:
+        pass
+    return jsonify({'deleted': True}), 200
+
+
+# ─── Feedback endpoint ──────────────────────────────────────────────────────
+
+@ai_bp.route('/feedback', methods=['POST'])
+@require_auth
+def ai_feedback():
+    user = request.current_user
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    if rating not in (1, -1):
+        return jsonify({'error': 'rating must be 1 or -1'}), 400
+    try:
+        mongo.db.ai_feedback.insert_one({
+            'family_id':       user.get('family_id', ''),
+            'user_id':         str(user['_id']),
+            'message_id':      str(data.get('message_id', '')),
+            'conversation_id': str(data.get('conversation_id', '')),
+            'rating':          rating,
+            'created_at':      datetime.now(timezone.utc),
+        })
+    except Exception:
+        pass
+    return jsonify({'ok': True}), 200
 
 
 # ─── Legacy shopping endpoint ───────────────────────────────────────────────
