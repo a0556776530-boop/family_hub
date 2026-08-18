@@ -12,13 +12,22 @@ function useRingPhone() {
   const [ringing, setRinging]   = useState(null)  // user_id being rung
   const [ringDone, setRingDone] = useState({})     // { [user_id]: timestamp }
 
+  const [ringMsg, setRingMsg] = useState(null) // { text, ok }
+
   const ring = useCallback(async (userId) => {
     setRinging(userId)
+    setRingMsg(null)
     try {
-      await api.post(`/api/notifications/ring/${userId}`)
+      const res = await api.post(`/api/notifications/ring/${userId}`)
       setRingDone(d => ({ ...d, [userId]: Date.now() }))
-    } catch (e) {
-      console.error('ring failed', e)
+      if (res.data.sent === 0) {
+        setRingMsg({ text: 'הטלפון לא מחובר להתראות — על הילד לפתוח את האפ ולאשר התראות', ok: false })
+      } else {
+        setRingMsg({ text: 'הצלצול נשלח!', ok: true })
+        setTimeout(() => setRingMsg(null), 3000)
+      }
+    } catch {
+      setRingMsg({ text: 'שגיאה בשליחה', ok: false })
     } finally {
       setRinging(null)
     }
@@ -331,6 +340,11 @@ export default function FamilyMap() {
               </div>
               {selected.accuracy_m != null && (
                 <p className="text-gray-400 text-xs mb-3">דיוק מיקום: ±{Math.round(selected.accuracy_m)} מטר</p>
+              )}
+              {ringMsg && (
+                <div className={`text-xs text-center px-3 py-2 rounded-xl mb-2 ${ringMsg.ok ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'}`}>
+                  {ringMsg.text}
+                </div>
               )}
               <div className="flex gap-2.5 mb-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}

@@ -96,9 +96,11 @@ def ring_phone(target_user_id):
     if target.get('family_id') != caller.get('family_id'):
         return jsonify({'error': 'forbidden'}), 403
 
+    sent = 0
     if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
         payload = {'type': 'ring', 'caller': caller.get('name', 'ההורים')}
         for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
             _send_push(sub, payload)
+            sent += 1
 
-    return jsonify({'message': 'נשלח'}), 200
+    return jsonify({'message': 'נשלח', 'sent': sent}), 200
