@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from bson import ObjectId
 from datetime import datetime, timezone
 from app import mongo
@@ -48,6 +48,28 @@ MODEL_EXTRA2   = 'compound-beta'
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
+
+# Gemini model list — ordered by preference (newest first)
+GEMINI_MODELS = [
+    'gemini-3.5-flash',
+    'gemini-2.5-flash',
+    'gemini-3.1-flash-preview',
+    'gemini-2.5-pro',
+    'gemini-3.1-flash-lite',
+    'gemini-2.0-flash',
+]
+
+# Keywords that indicate a web search would help answer the question
+_SEARCH_KEYWORDS_RE = re.compile(
+    r'(?:מתכון|הכנת|איך\s+(?:מכינים|מבשלים|עושים|מכינ)|בישול\s+|לבשל|'
+    r'מחיר\s|מחירים|חדשות|'
+    r'מה\s+זה\s|מי\s+(?:הוא|היא)\s|'
+    r'חפש\s+לי|מצא\s+לי|תמצא\s+לי|'
+    r'המלצ(?:ה|ות)|ביקורת|'
+    r'מסעדות|בית\s+קפה|בתי\s+קפה|'
+    r'שעות\s+פתיחה|כרטיסים\s+ל)',
+    re.IGNORECASE
+)
 
 # ─── Tools ─────────────────────────────────────────────────────────────────
 
@@ -310,7 +332,7 @@ def execute_tool(name, args, user):
         if not query:
             return {'error': 'missing query'}
         try:
-            resp = _tavily_client.search(query, max_results=max_r, include_answer=True)
+            resp = _tavily_client.search(query, max_results=max_r, include_answer=True, include_images=True)
             results = []
             for r in resp.get('results', []):
                 results.append({
@@ -318,10 +340,12 @@ def execute_tool(name, args, user):
                     'url':     r.get('url', ''),
                     'content': r.get('content', '')[:500],
                 })
+            images = [img for img in (resp.get('images') or []) if isinstance(img, str)][:6]
             return {
                 'query':   query,
                 'answer':  resp.get('answer', ''),
                 'results': results,
+                'images':  images,
             }
         except Exception as e:
             return {'error': str(e)}
@@ -782,6 +806,145 @@ def ai_diagnose():
     return jsonify(results), 200
 
 
+# ─── Streaming chat endpoint ────────────────────────────────────────────────
+
+@ai_bp.route('/chat/stream', methods=['POST'])
+@require_auth
+def ai_chat_stream():
+    import sys as _sys
+
+    def _instant_err(msg):
+        def _g():
+            yield f'data: {json.dumps({"type":"error","message":msg}, ensure_ascii=False)}\n\n'
+        return Response(stream_with_context(_g()), content_type='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+    if not _AI_AVAILABLE:
+        return _instant_err('AI לא זמין — יש להגדיר מפתח API')
+
+    user = request.current_user
+    if not user.get('family_id'):
+        return _instant_err('no family')
+
+    body        = request.get_json() or {}
+    message     = (body.get('message') or '').strip()
+    history_raw = body.get('history') or []
+
+    def ev(obj):
+        return f'data: {json.dumps(obj, ensure_ascii=False)}\n\n'
+
+    def generate():
+        if not message:
+            yield ev({'type': 'error', 'message': 'הודעה ריקה'})
+            return
+
+        # Fast path: action verbs → instant done (no streaming needed)
+        if _ACTION_RE.search(message):
+            kw_reply, kw_actions = _keyword_parse_basic(message, user)
+            if kw_reply:
+                yield ev({'type': 'done', 'reply': kw_reply, 'actions': kw_actions or [], 'sources': [], 'images': []})
+                return
+            ci_reply, ci_actions = _classify_and_execute(message, user)
+            if ci_reply:
+                yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': []})
+                return
+
+        # Knowledge path: build message list
+        today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        msgs = [{'role': 'system', 'content': SYSTEM_PROMPT.replace('{today}', today_str)}]
+        for h in history_raw[-20:]:
+            if h.get('role') in ('user', 'assistant') and h.get('content'):
+                msgs.append({'role': h['role'], 'content': str(h['content'])})
+        msgs.append({'role': 'user', 'content': message})
+
+        all_actions = []
+        sources     = []
+        images_out  = []
+
+        # Pre-search when query is clearly knowledge/recipe/search
+        if _tavily_client and _SEARCH_KEYWORDS_RE.search(message):
+            yield ev({'type': 'status', 'text': '🔍 מחפש ברשת...'})
+            try:
+                resp = _tavily_client.search(message, max_results=5, include_answer=True, include_images=True)
+                results_list = [
+                    {'title': r.get('title', ''), 'url': r.get('url', ''), 'content': r.get('content', '')[:400]}
+                    for r in resp.get('results', [])[:5]
+                ]
+                images_out = [img for img in (resp.get('images') or []) if isinstance(img, str)][:4]
+                search_result = {
+                    'query': message, 'answer': resp.get('answer', ''),
+                    'results': results_list, 'images': images_out,
+                }
+                all_actions.append({'tool': 'web_search', 'result': search_result})
+                sources = results_list
+                yield ev({'type': 'tool_done', 'name': 'web_search', 'result': search_result})
+
+                ctx = 'תוצאות חיפוש:\n'
+                if resp.get('answer'):
+                    ctx += f'תשובה מסוכמת: {resp["answer"]}\n\n'
+                for i, r in enumerate(results_list[:5]):
+                    ctx += f'{i+1}. {r["title"]}\n{r["url"]}\n{r["content"][:200]}\n\n'
+                msgs.append({'role': 'user', 'content': f'[{ctx.strip()}]'})
+            except Exception as se:
+                print(f'[stream/search] {se!r}', file=_sys.stderr)
+
+        yield ev({'type': 'status', 'text': '💭 מנסח תשובה...'})
+
+        full_text = []
+        streamed  = [False]
+
+        def do_stream(clients, models):
+            for client in clients:
+                if not client:
+                    continue
+                for model in models:
+                    try:
+                        stream = client.chat.completions.create(
+                            model=model, messages=msgs,
+                            temperature=0.7, max_tokens=1024, stream=True,
+                        )
+                        for chunk in stream:
+                            delta = ''
+                            try:
+                                delta = (chunk.choices[0].delta.content or '') if chunk.choices else ''
+                            except Exception:
+                                pass
+                            if delta:
+                                full_text.append(delta)
+                                yield ev({'type': 'delta', 'text': delta})
+                        streamed[0] = True
+                        return
+                    except Exception as me:
+                        print(f'[stream] {model}: {me!r}', file=_sys.stderr)
+                        continue
+
+        yield from do_stream([_gemini_client, _gemini_client2], GEMINI_MODELS)
+
+        if not streamed[0] and _groq_client:
+            yield from do_stream(
+                [_groq_client],
+                [MODEL_FALLBACK, MODEL_EXTRA2, 'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'],
+            )
+
+        if streamed[0]:
+            yield ev({
+                'type': 'done', 'reply': ''.join(full_text),
+                'actions': all_actions, 'sources': sources, 'images': images_out,
+            })
+        else:
+            yield ev({'type': 'error', 'message': 'הגענו לגבול השימוש — נסה שוב מחר 🌅'})
+
+    return Response(
+        stream_with_context(generate()),
+        content_type='text/event-stream',
+        headers={
+            'Cache-Control':     'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection':        'keep-alive',
+        },
+    )
+
+
 # ─── Chat endpoint ──────────────────────────────────────────────────────────
 
 @ai_bp.route('/chat', methods=['POST'])
@@ -833,15 +996,6 @@ def ai_chat():
     def _is_retryable(e):
         s = str(e).lower()
         return 'rate_limit' in s or '429' in s or 'model_decommissioned' in s or 'decommissioned' in s
-
-    # Gemini models — try latest first
-    GEMINI_MODELS = [
-        'gemini-3.5-flash',
-        'gemini-2.5-flash',
-        'gemini-3.1-flash-preview',
-        'gemini-2.5-pro',
-        'gemini-3.1-flash-lite',
-    ]
 
     def _call_with_fallback(**kwargs):
         import sys

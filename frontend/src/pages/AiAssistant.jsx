@@ -1,52 +1,49 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+
 const SUGGESTIONS = [
-  { icon: '👋', text: 'מה שלומך?' },
   { icon: '🍝', text: 'תן לי מתכון לפסטה בולונז' },
   { icon: '📅', text: 'מה יש לנו השבוע ביומן?' },
-  { icon: '🏖️', text: 'תכנן לי טיול לאילת' },
+  { icon: '🌍', text: 'תכנן לי טיול לאילת' },
   { icon: '🛒', text: 'תוסיף חלב וביצים לקניות' },
   { icon: '✅', text: 'מה המשימות הפתוחות?' },
+  { icon: '🍕', text: 'מה אפשר לאכול מ-5 מרכיבים?' },
 ]
 
-// ─── Zero-token Hebrew intent detection ──────────────────────────────────────
-// Runs entirely in the browser — no server, no tokens, no internet needed.
-// Understands natural Hebrew phrasing by matching word-families, not exact words.
+// Verbs that require full LLM tool-use (calendar, complex ops)
+const MODIFY_VERB_RE = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|שים|תשים|תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|סמן|תסמן|בצע|תבצע|השלם|תשלים|סיימתי|גמרתי)/
 
-const ADD_VERBS = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/
-const SHOW_VERBS = /(?:תראה|הראה|הצג|תציג|תפרט|מה\s+(?:יש|המ)|הצג|מהי|רוצה\s+לראות|רוצה\s+לדעת)/
-const DELETE_VERBS = /(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/
-const DONE_VERBS = /(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/
-const WANT_ADD = /(?:אשמח\s+(?:אם\s+)?(?:ש)?(?:ת(?:וסיף|כניס|צור))|רוצה\s+(?:ש)?(?:תוסיף|להוסיף|להכניס|לצור)|אפשר\s+(?:ש)?(?:תוסיף|להוסיף)|(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|בוא\s+(?:ת)?(?:וסיף|כניס|צור)|תוכל(?:י)?\s+(?:ל)?(?:הוסיף|הכניס|צור))/
+// ─── Local intent detection (zero network, instant) ───────────────────────────
 
-const SHOP_CTX = /(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות)/
-const TASK_CTX = /(?:משימ[הות]|תזכורת|ל(?:עשות|לעשות)|לרשימת\s+המשימות|למשימות|הרשימה\s+שלי)/
-
-// Politeness / filler words that carry no content
+const ADD_VERBS   = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/
+const SHOW_VERBS  = /(?:תראה|הראה|הצג|תציג|תפרט|מה\s+(?:יש|המ)|הצג|מהי|רוצה\s+לראות|רוצה\s+לדעת)/
+const DELETE_VERBS= /(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/
+const DONE_VERBS  = /(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/
+const WANT_ADD    = /(?:אשמח\s+(?:אם\s+)?(?:ש)?(?:ת(?:וסיף|כניס|צור))|רוצה\s+(?:ש)?(?:תוסיף|להוסיף|להכניס|לצור)|אפשר\s+(?:ש)?(?:תוסיף|להוסיף)|(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|בוא\s+(?:ת)?(?:וסיף|כניס|צור)|תוכל(?:י)?\s+(?:ל)?(?:הוסיף|הכניס|צור))/
+const SHOP_CTX    = /(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות)/
+const TASK_CTX    = /(?:משימ[הות]|תזכורת|ל(?:עשות|לעשות)|לרשימת\s+המשימות|למשימות|הרשימה\s+שלי)/
 const NOISE_WORDS = /(?:אשמח|אודה|תוכל|תוכלי|בבקשה|נא|אם\s+אפשר|אני\s+רוצה|אני|רוצה|אפשר|בוא|יכול|יכולה|שתוסיף|שתכניס|שתצור|שתמחק)\b/gi
 
-// Strip non-content words to extract the entity
 function stripNoise(s) {
   return s
-    .replace(/(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/gi, '')
-    .replace(/(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/gi, '')
-    .replace(/(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/gi, '')
-    .replace(NOISE_WORDS, '')
+    .replace(ADD_VERBS,    '')
+    .replace(DELETE_VERBS, '')
+    .replace(DONE_VERBS,   '')
+    .replace(NOISE_WORDS,  '')
     .replace(/(?:משימ[הות]|תזכורת|למשימות|לרשימת\s+המשימות)/gi, '')
     .replace(/(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|בקניות|ברשימ[הת]|לקנות|לחנות)/gi, '')
     .replace(/(?:^|\s)(?:את|לי|ה|ל|מ|ב|כ|ו|אני|אתה|את|הם|הן|אנחנו|בבקשה|נא|גם|עוד)\s/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^[,.\-:]+|[,.\-:?!]+$/g, '')
-    .trim()
+    .replace(/\s+/g, ' ').trim()
+    .replace(/^[,.\-:]+|[,.\-:?!]+$/g, '').trim()
 }
 
 function detectIntent(msg) {
-  const m = msg.trim()
+  const m       = msg.trim()
   const hasAdd  = ADD_VERBS.test(m) || WANT_ADD.test(m)
   const hasShow = SHOW_VERBS.test(m) || /^(?:מה|כמה|מי|הצג|רשימ)/.test(m)
   const hasDel  = DELETE_VERBS.test(m)
@@ -54,73 +51,38 @@ function detectIntent(msg) {
   const isShop  = SHOP_CTX.test(m)
   const isTask  = TASK_CTX.test(m)
 
-  // ── Add task ──────────────────────────────────────────────────────────────
   if (hasAdd && isTask && !isShop) {
-    // Extract title: everything after "משימה/תזכורת" keyword, then strip noise
     let title = m.replace(/^.*?(?:משימ[הות]|תזכורת)\s*/i, '').trim()
     title = stripNoise(title)
     if (!title || title.length < 2) title = stripNoise(m)
     if (title && title.length > 1) return { intent: 'add_task', title }
   }
-
-  // ── Add shopping ──────────────────────────────────────────────────────────
   if (hasAdd && isShop) {
-    // Extract items: remove everything from shopping context word onward
-    let raw = m
-    raw = raw.replace(/\s*(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות).*/i, '')
+    let raw = m.replace(/\s*(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות).*/i, '')
     raw = stripNoise(raw)
     const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
     if (items.length) return { intent: 'add_shopping', items }
   }
-
-  // ── "צריך לקנות X" / "קנה X" — shopping without explicit add verb ────────
   if (/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!\s*ל(?:עשות|לעשות))/.test(m) && (isShop || !isTask)) {
     let raw = m.replace(/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?/i, '').trim()
-    raw = raw.replace(SHOP_CTX, '').trim()
-    raw = stripNoise(raw)
+    raw = stripNoise(raw.replace(SHOP_CTX, '').trim())
     const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
     if (items.length > 0 && items[0].length > 1) return { intent: 'add_shopping', items }
   }
-
-  // ── Show tasks ────────────────────────────────────────────────────────────
-  if (isTask && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) {
-    return { intent: 'get_tasks' }
-  }
-  if (/(?:מה\s+(?:ה)?משימות|משימות\s+פתוחות|כל\s+המשימות)/.test(m)) {
-    return { intent: 'get_tasks' }
-  }
-
-  // ── Show shopping ──────────────────────────────────────────────────────────
-  if (isShop && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) {
-    return { intent: 'get_shopping' }
-  }
-  if (/(?:מה\s+(?:יש\s+)?(?:ב)?(?:ה)?קניות|מה\s+(?:יש\s+)?ברשימ)/.test(m)) {
-    return { intent: 'get_shopping' }
-  }
-
-  // ── Delete task ────────────────────────────────────────────────────────────
-  if (hasDel && isTask) {
-    const title = stripNoise(m)
-    if (title && title.length > 1) return { intent: 'delete_task', title }
-  }
-
-  // ── Complete task ──────────────────────────────────────────────────────────
-  if (hasDone && isTask) {
-    const title = stripNoise(m)
-    if (title && title.length > 1) return { intent: 'complete_task', title }
-  }
-
+  if (isTask && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) return { intent: 'get_tasks' }
+  if (/(?:מה\s+(?:ה)?משימות|משימות\s+פתוחות|כל\s+המשימות)/.test(m))   return { intent: 'get_tasks' }
+  if (isShop && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m)))           return { intent: 'get_shopping' }
+  if (/(?:מה\s+(?:יש\s+)?(?:ב)?(?:ה)?קניות|מה\s+(?:יש\s+)?ברשימ)/.test(m)) return { intent: 'get_shopping' }
+  if (hasDel && isTask) { const t = stripNoise(m); if (t && t.length > 1) return { intent: 'delete_task', title: t } }
+  if (hasDone && isTask) { const t = stripNoise(m); if (t && t.length > 1) return { intent: 'complete_task', title: t } }
   return null
 }
 
 async function executeIntent(intent) {
   switch (intent.intent) {
     case 'add_task': {
-      const res = await api.post('/api/tasks/', { title: intent.title, priority: 'medium' })
-      return {
-        reply: `✅ נוצרה משימה: **${intent.title}**`,
-        actions: [{ tool: 'create_task', result: { created: true } }],
-      }
+      await api.post('/api/tasks/', { title: intent.title, priority: 'medium' })
+      return { reply: `✅ נוצרה משימה: **${intent.title}**`, actions: [{ tool: 'create_task', result: { created: true } }] }
     }
     case 'add_shopping': {
       const added = []
@@ -128,10 +90,7 @@ async function executeIntent(intent) {
         try { await api.post('/api/shopping/', { name }); added.push(name) } catch {}
       }
       if (!added.length) return null
-      return {
-        reply: `🛒 נוסף לקניות: ${added.join(', ')}`,
-        actions: [{ tool: 'add_shopping_items', result: { added: added.length, items: added } }],
-      }
+      return { reply: `🛒 נוסף לקניות: ${added.join(', ')}`, actions: [{ tool: 'add_shopping_items', result: { added: added.length, items: added } }] }
     }
     case 'get_tasks': {
       const res = await api.get('/api/tasks/')
@@ -163,86 +122,234 @@ async function executeIntent(intent) {
       await api.patch(`/api/tasks/${match._id}/complete`)
       return { reply: `🎉 משימה הושלמה: **${match.title}**`, actions: [{ tool: 'complete_task', result: { completed: true } }] }
     }
-    default:
-      return null
+    default: return null
   }
 }
 
-// ─── UI Components ─────────────────────────────────────────────────────────
+// ─── Markdown inline parser ────────────────────────────────────────────────────
 
-function TypingDots() {
+function parseInline(text) {
+  if (!text) return []
+  const re = /(\*\*[^*]+\*\*|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|`[^`]+`)/g
+  const parts = text.split(re)
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4)
+      return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>
+    const lm = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/)
+    if (lm)
+      return <a key={i} href={lm[2]} target="_blank" rel="noopener noreferrer"
+               className="text-blue-300 underline decoration-blue-400/50 hover:text-blue-100 break-all">{lm[1]} ↗</a>
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2)
+      return <code key={i} className="bg-white/15 rounded px-1 text-xs font-mono text-blue-100">{part.slice(1, -1)}</code>
+    return part
+  })
+}
+
+function MarkdownText({ text, className = '' }) {
+  if (!text) return null
+  const lines = text.split('\n')
   return (
-    <div className="flex items-end gap-3 px-4 py-2" dir="rtl">
-      <div className="w-9 h-9 rounded-full bg-white/20 border border-white/30 flex items-center justify-center text-base shrink-0 shadow">🤖</div>
-      <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-2xl rounded-br-sm px-4 py-3">
-        <div className="flex gap-1.5 items-center h-4">
-          {[0,180,360].map(d => (
-            <span key={d} className="w-2 h-2 rounded-full bg-white/60 animate-bounce" style={{ animationDelay:`${d}ms` }} />
-          ))}
-        </div>
-      </div>
+    <div className={`space-y-0.5 text-sm text-white/95 leading-relaxed ${className}`}>
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="h-1.5" />
+        if (line.startsWith('### ')) return <h3 key={i} className="font-semibold text-blue-100 mt-2">{parseInline(line.slice(4))}</h3>
+        if (line.startsWith('## '))  return <h2 key={i} className="font-bold text-base text-white mt-3 mb-0.5">{parseInline(line.slice(3))}</h2>
+        if (line.startsWith('# '))   return <h1 key={i} className="font-bold text-lg text-white mt-3 mb-1">{parseInline(line.slice(2))}</h1>
+        if (/^[-•*]\s/.test(line))
+          return (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="text-blue-300/80 shrink-0 mt-px font-bold leading-5">•</span>
+              <span className="flex-1">{parseInline(line.replace(/^[-•*]\s+/, ''))}</span>
+            </div>
+          )
+        const nm = line.match(/^(\d+)\.\s+(.+)$/)
+        if (nm)
+          return (
+            <div key={i} className="flex gap-2 items-start">
+              <span className="text-blue-300/80 font-bold shrink-0 min-w-[1.25rem] text-right leading-5">{nm[1]}.</span>
+              <span className="flex-1">{parseInline(nm[2])}</span>
+            </div>
+          )
+        return <p key={i}>{parseInline(line)}</p>
+      })}
     </div>
   )
 }
 
-function ActionBadges({ actions }) {
-  if (!actions?.length) return null
-  const map = {
-    web_search:               r => r?.results?.length > 0 ? `🔍 ${r.results.length} תוצאות` : null,
-    add_shopping_items:       r => r?.added > 0 ? `🛒 ${r.added} נוספו לקניות` : null,
-    delete_shopping_item:     r => r?.deleted > 0 ? `🗑️ נמחק` : null,
-    toggle_shopping_done:     r => r?.updated > 0 ? `✔️ עודכן` : null,
-    clear_completed_shopping: r => r?.deleted > 0 ? `🧹 נוקו ${r.deleted}` : null,
-    create_event:             r => r?.created ? `📅 נוסף ליומן` : null,
-    update_event:             r => r?.updated ? `✏️ יומן עודכן` : null,
-    delete_event:             r => r?.deleted > 0 ? `🗑️ אירוע נמחק` : null,
-    create_task:              r => r?.created ? `✅ משימה נוצרה` : null,
-    complete_task:            r => r?.completed ? `🎉 הושלמה` : null,
-    delete_task:              r => r?.deleted > 0 ? `🗑️ נמחקה` : null,
-    update_task:              r => r?.updated ? `✏️ עודכנה` : null,
-  }
-  const badges = actions.map(a => map[a.tool]?.(a.result)).filter(Boolean)
-  if (!badges.length) return null
+// ─── Source card ───────────────────────────────────────────────────────────────
+
+function SourceCard({ source }) {
+  const domain = (() => { try { return new URL(source.url).hostname.replace('www.', '') } catch { return '' } })()
   return (
-    <div className="flex flex-wrap gap-1.5 mt-2 pr-11">
-      {badges.map((b, i) => (
-        <span key={i} className="text-xs bg-emerald-500/25 border border-emerald-300/30 text-emerald-100 rounded-full px-2.5 py-1">{b}</span>
+    <a href={source.url} target="_blank" rel="noopener noreferrer"
+       className="flex flex-col gap-1 p-2.5 rounded-xl bg-white/6 border border-white/10 hover:bg-white/12 hover:border-white/18 transition-all group active:scale-[0.98]">
+      <div className="flex items-start gap-2">
+        <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=16`}
+             className="w-4 h-4 rounded shrink-0 mt-0.5 opacity-80"
+             onError={e => { e.target.style.display = 'none' }} alt="" />
+        <p className="text-white text-[11.5px] font-medium leading-snug line-clamp-2 flex-1">{source.title}</p>
+      </div>
+      {source.content && (
+        <p className="text-blue-300/70 text-[10.5px] leading-snug line-clamp-2 pr-6">{source.content}</p>
+      )}
+      <p className="text-blue-400/50 text-[10px] pr-6 group-hover:text-blue-300/60 transition-colors">{domain} ↗</p>
+    </a>
+  )
+}
+
+function ImageGrid({ images }) {
+  if (!images?.length) return null
+  return (
+    <div className={`grid gap-1.5 mt-2 ${images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      {images.slice(0, 4).map((img, i) => (
+        <a key={i} href={img} target="_blank" rel="noopener noreferrer"
+           className="rounded-xl overflow-hidden aspect-video bg-white/5 block">
+          <img src={img} alt="" className="w-full h-full object-cover hover:opacity-90 transition-opacity"
+               onError={e => { e.target.parentElement.style.display = 'none' }} />
+        </a>
       ))}
     </div>
   )
 }
 
-function Message({ msg }) {
-  const isUser = msg.role === 'user'
-  if (isUser) {
+// ─── Quick action buttons ──────────────────────────────────────────────────────
+
+function generateQuickActions(content, sources) {
+  const acts = []
+  if (/(?:מצרכים|מרכיבים|כפית|כפות|כוס|גרם|מ"ל|ק"ג|ליטר|קמח|שמן|מלח)/.test(content))
+    acts.push({ label: '🛒 הוסף מצרכים לקניות', message: 'תוסיף את המצרכים של המתכון הזה לרשימת הקניות' })
+  if (sources.length > 0 && acts.length === 0)
+    acts.push({ label: '🔍 חפש עוד מידע', message: 'חפש לי עוד מידע מפורט על הנושא' })
+  return acts.slice(0, 3)
+}
+
+function QuickActions({ actions, onAction }) {
+  if (!actions?.length) return null
+  return (
+    <div className="flex flex-wrap gap-2 mt-3">
+      {actions.map((a, i) => (
+        <button key={i} onClick={() => onAction(a.message)}
+          className="flex items-center gap-1.5 text-xs bg-blue-500/20 hover:bg-blue-500/35 border border-blue-400/25 hover:border-blue-400/40 rounded-full px-3.5 py-1.5 text-white transition-all active:scale-95">
+          {a.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Tool badges ───────────────────────────────────────────────────────────────
+
+function ToolBadges({ actions }) {
+  if (!actions?.length) return null
+  const map = {
+    web_search:               r => r?.results?.length > 0 ? `🔍 ${r.results.length} תוצאות` : null,
+    add_shopping_items:       r => r?.added > 0 ? `🛒 ${r.added} נוספו` : null,
+    delete_shopping_item:     r => r?.deleted > 0 ? `🗑️ נמחק` : null,
+    toggle_shopping_done:     r => r?.updated > 0 ? `✔️ עודכן` : null,
+    clear_completed_shopping: r => r?.deleted > 0 ? `🧹 ${r.deleted} נוקו` : null,
+    create_event:             r => r?.created  ? `📅 ביומן` : null,
+    update_event:             r => r?.updated  ? `✏️ יומן` : null,
+    delete_event:             r => r?.deleted > 0 ? `🗑️ אירוע` : null,
+    create_task:              r => r?.created  ? `✅ משימה` : null,
+    complete_task:            r => r?.completed ? `🎉 הושלמה` : null,
+    delete_task:              r => r?.deleted > 0 ? `🗑️ נמחקה` : null,
+    update_task:              r => r?.updated  ? `✏️ עודכנה` : null,
+  }
+  const badges = actions.map(a => map[a.tool]?.(a.result)).filter(Boolean)
+  if (!badges.length) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {badges.map((b, i) => (
+        <span key={i} className="text-[10.5px] bg-emerald-500/20 border border-emerald-400/25 text-emerald-200 rounded-full px-2.5 py-0.5">{b}</span>
+      ))}
+    </div>
+  )
+}
+
+// ─── Message component ─────────────────────────────────────────────────────────
+
+function Message({ msg, onQuickAction }) {
+  if (msg.role === 'user') {
     return (
       <div className="flex justify-end px-4 py-1" dir="ltr">
-        <div className="max-w-[80%] bg-white text-gray-900 rounded-2xl rounded-br-sm px-4 py-2.5 shadow-md">
+        <div className="max-w-[82%] bg-white text-gray-900 rounded-2xl rounded-br-sm px-4 py-2.5 shadow-md">
           <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ direction: 'rtl', textAlign: 'right' }}>{msg.content}</p>
         </div>
       </div>
     )
   }
+
+  const hasSources = msg.sources?.length > 0
+  const hasImages  = msg.images?.length > 0
+  const hasQuickActs = msg.quickActions?.length > 0
+
   return (
-    <div className="px-4 py-1" dir="rtl">
+    <div className="px-4 py-1.5" dir="rtl">
       <div className="flex gap-2.5 items-start">
-        <div className="w-9 h-9 rounded-full bg-white/20 border border-white/25 flex items-center justify-center text-base shrink-0 shadow">🤖</div>
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400/60 to-indigo-600/60 border border-white/20 flex items-center justify-center text-[17px] shrink-0 shadow mt-0.5">🤖</div>
         <div className="flex-1 min-w-0">
-          <div className="bg-white/12 backdrop-blur-sm border border-white/15 rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm">
-            <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-          </div>
-          <ActionBadges actions={msg.actions} />
+
+          {/* Status pill */}
+          {msg.status && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-blue-200/80 bg-white/6 border border-white/10 rounded-full px-3 py-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse flex-shrink-0" />
+                {msg.status}
+              </span>
+            </div>
+          )}
+
+          {/* Main bubble */}
+          {(msg.content || msg.streaming) && (
+            <div className="bg-white/10 backdrop-blur-sm border border-white/14 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+              {msg.content ? (
+                <>
+                  <MarkdownText text={msg.content} />
+                  {msg.streaming && (
+                    <span className="inline-block w-0.5 h-[1em] bg-blue-300 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                  )}
+                </>
+              ) : msg.streaming ? (
+                <div className="flex gap-1.5 items-center h-5">
+                  {[0, 160, 320].map(d => (
+                    <span key={d} className="w-2 h-2 rounded-full bg-white/50 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          {/* Sources */}
+          {!msg.streaming && hasSources && (
+            <div className="mt-2.5">
+              <p className="text-blue-300/50 text-[10px] mb-1.5 font-medium tracking-wider uppercase">מקורות</p>
+              <div className="grid gap-1.5">
+                {msg.sources.slice(0, 4).map((s, i) => <SourceCard key={i} source={s} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Images */}
+          {!msg.streaming && hasImages && <ImageGrid images={msg.images} />}
+
+          {/* Tool badges */}
+          {!msg.streaming && <ToolBadges actions={msg.actions} />}
+
+          {/* Quick actions */}
+          {!msg.streaming && hasQuickActs && (
+            <QuickActions actions={msg.quickActions} onAction={onQuickAction} />
+          )}
         </div>
       </div>
     </div>
   )
 }
 
+// ─── History helpers ───────────────────────────────────────────────────────────
+
 function formatDate(iso) {
-  const d = new Date(iso)
-  const now = new Date()
-  const diff = now - d
-  if (diff < 86400000) return 'היום'
+  const d = new Date(iso), now = new Date(), diff = now - d
+  if (diff < 86400000)  return 'היום'
   if (diff < 172800000) return 'אתמול'
   return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
 }
@@ -264,15 +371,13 @@ function HistoryPanel({ history, onSelect, onClose, onClear }) {
         <div className="flex-1 overflow-y-auto py-2">
           {history.length === 0 ? (
             <p className="text-blue-300/60 text-sm text-center mt-8 px-4">אין היסטוריה עדיין</p>
-          ) : (
-            history.map((h, i) => (
-              <button key={i} onClick={() => onSelect(h)}
-                className="w-full text-right px-4 py-3 hover:bg-white/8 transition-colors border-b border-white/5">
-                <p className="text-blue-300 text-[10px] mb-0.5">{formatDate(h.date)} · {h.count} הודעות</p>
-                <p className="text-white text-sm truncate">{h.preview}</p>
-              </button>
-            ))
-          )}
+          ) : history.map((h, i) => (
+            <button key={i} onClick={() => onSelect(h)}
+              className="w-full text-right px-4 py-3 hover:bg-white/8 transition-colors border-b border-white/5">
+              <p className="text-blue-300 text-[10px] mb-0.5">{formatDate(h.date)} · {h.count} הודעות</p>
+              <p className="text-white text-sm truncate">{h.preview}</p>
+            </button>
+          ))}
         </div>
         {history.length > 0 && (
           <button onClick={onClear}
@@ -295,93 +400,206 @@ function ViewingHistoryBanner({ date, onClose }) {
   )
 }
 
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export default function AiAssistant() {
-  const { user }     = useAuth()
-  const navigate     = useNavigate()
-  const bottomRef    = useRef(null)
-  const inputRef     = useRef(null)
-  const firstName    = (user?.name || '').split(' ')[0]
-  const fid          = user?.family_id || 'default'
-  const STORAGE_KEY  = `ai_chat_${fid}`
-  const HISTORY_KEY  = `ai_history_${fid}`
+  const { user }  = useAuth()
+  const navigate  = useNavigate()
+  const bottomRef = useRef(null)
+  const inputRef  = useRef(null)
+  const abortRef  = useRef(null)
 
-  const freshGreeting = () => [{ role: 'assistant', content: `שלום ${firstName} 👋\nאני כאן לעזור — קניות, יומן, משימות, מתכונים, שאלות — הכל.\n\nמה תרצה?` }]
+  const firstName   = (user?.name || '').split(' ')[0]
+  const fid         = user?.family_id || 'default'
+  const HISTORY_KEY = `ai_history_${fid}`
 
-  const [messages,      setMessages]      = useState(freshGreeting)
-  const [input,         setInput]         = useState('')
-  const [loading,       setLoading]       = useState(false)
-  const [showHistory,   setShowHistory]   = useState(false)
-  const [viewingHist,   setViewingHist]   = useState(null)
+  const freshGreeting = () => [{
+    id: 'greeting', role: 'assistant',
+    content: `שלום ${firstName} 👋\nאני כאן לעזור — קניות, יומן, משימות, מתכונים, שאלות — הכל.\n\nמה תרצה?`,
+    actions: [], sources: [], images: [], quickActions: [],
+  }]
 
-  const loadHistory = () => {
+  const [messages,    setMessages]    = useState(freshGreeting)
+  const [input,       setInput]       = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [viewingHist, setViewingHist] = useState(null)
+  const [history,     setHistory]     = useState(() => {
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] }
-  }
-  const [history, setHistory] = useState(loadHistory)
+  })
 
-  const saveToHistory = (msgs) => {
+  const loadHistory = () => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] } }
+
+  const saveToHistory = useCallback((msgs) => {
     const userMsgs = msgs.filter(m => m.role === 'user')
-    if (userMsgs.length === 0) return
-    const entry = {
-      date: new Date().toISOString(),
-      preview: userMsgs[0].content.slice(0, 60),
-      count: msgs.length,
-      messages: msgs.slice(-40),
-    }
-    const prev = loadHistory()
+    if (!userMsgs.length) return
+    const entry = { date: new Date().toISOString(), preview: userMsgs[0].content.slice(0, 60), count: msgs.length, messages: msgs.slice(-40) }
+    const prev    = loadHistory()
     const updated = [entry, ...prev].slice(0, 20)
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)) } catch {}
     setHistory(updated)
-  }
+  }, [HISTORY_KEY])
 
-  // On unmount: save current chat to history, clear current chat
   useEffect(() => {
     return () => {
       setMessages(cur => {
-        if (cur.filter(m => m.role === 'user').length > 0) {
-          saveToHistory(cur)
-        }
+        if (cur.filter(m => m.role === 'user').length > 0) saveToHistory(cur)
         return cur
       })
-      try { localStorage.removeItem(STORAGE_KEY) } catch {}
     }
-  }, [])
+  }, [saveToHistory])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
+  const addAssistantMsg = useCallback((data) => {
+    setMessages(prev => [...prev, {
+      id: `a_${Date.now()}`,
+      role: 'assistant',
+      content:      data.content || '',
+      actions:      data.actions || [],
+      sources:      data.sources || [],
+      images:       data.images  || [],
+      quickActions: data.quickActions || [],
+      error:        data.error || false,
+    }])
+  }, [])
+
+  // ── Streaming sender ──────────────────────────────────────────────────────
+
+  const sendStreaming = useCallback(async (msg, historyForApi) => {
+    const controller = new AbortController()
+    abortRef.current = controller
+    const assistId   = `a_${Date.now()}`
+
+    setMessages(prev => [...prev, {
+      id: assistId, role: 'assistant',
+      content: '', streaming: true, status: '💭 חושב...',
+      actions: [], sources: [], images: [], quickActions: [],
+    }])
+
+    const update = (fn) => setMessages(prev => prev.map(m => m.id === assistId ? fn(m) : m))
+
+    try {
+      const token = localStorage.getItem('fh_token')
+      const res   = await fetch(`${API_BASE}/api/ai/chat/stream`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body:    JSON.stringify({ message: msg, history: historyForApi }),
+        signal:  controller.signal,
+      })
+      if (!res.ok) throw new Error(`${res.status}`)
+
+      const reader  = res.body.getReader()
+      const decoder = new TextDecoder()
+      let   buffer  = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          let ev
+          try { ev = JSON.parse(line.slice(6)) } catch { continue }
+
+          switch (ev.type) {
+            case 'status':
+              update(m => ({ ...m, status: ev.text }))
+              break
+            case 'tool_done':
+              if (ev.name === 'web_search') {
+                update(m => ({
+                  ...m,
+                  sources:  ev.result?.results || [],
+                  images:   ev.result?.images  || [],
+                  actions:  [...m.actions, { tool: 'web_search', result: ev.result }],
+                  status:   `נמצאו ${ev.result?.results?.length || 0} מקורות`,
+                }))
+              }
+              break
+            case 'delta':
+              update(m => ({ ...m, content: m.content + ev.text, status: null }))
+              break
+            case 'done': {
+              const finalContent = ev.reply || ''
+              const qas = generateQuickActions(finalContent, ev.sources || [])
+              update(m => ({
+                ...m,
+                content:      finalContent,
+                streaming:    false,
+                status:       null,
+                actions:      ev.actions?.length  ? ev.actions  : m.actions,
+                sources:      ev.sources?.length  ? ev.sources  : m.sources,
+                images:       ev.images?.length   ? ev.images   : m.images,
+                quickActions: qas,
+              }))
+              break
+            }
+            case 'error':
+              update(m => ({ ...m, content: ev.message || 'שגיאה', streaming: false, status: null, error: true }))
+              break
+          }
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      update(m => ({ ...m, content: 'שגיאה בחיבור — נסה שוב.', streaming: false, status: null, error: true }))
+    } finally {
+      abortRef.current = null
+      // Ensure the message is finalized even if we didn't get a 'done' event
+      update(m => m.streaming ? { ...m, streaming: false, status: null } : m)
+    }
+  }, [])
+
+  // ── Main send ─────────────────────────────────────────────────────────────
+
   async function send(text) {
     if (viewingHist) return
     const msg = (text ?? input).trim()
     if (!msg || loading) return
+
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
+
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
-    setMessages(prev => [...prev, { role: 'user', content: msg }])
+
+    const userMsgId = `u_${Date.now()}`
+    setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: msg }])
     setLoading(true)
 
+    const historyForApi = messages
+      .filter(m => (m.role === 'user' || m.role === 'assistant') && !m.streaming)
+      .map(m => ({ role: m.role, content: m.content }))
+
     try {
+      // 1. Local instant path
       const intent = detectIntent(msg)
       if (intent) {
         const result = await executeIntent(intent)
         if (result) {
-          setMessages(prev => [...prev, { role: 'assistant', content: result.reply, actions: result.actions }])
-          setLoading(false)
-          setTimeout(() => inputRef.current?.focus(), 50)
+          addAssistantMsg(result)
           return
         }
       }
 
-      const history = messages
-        .filter(m => m.role === 'user' || m.role === 'assistant')
-        .map(m => ({ role: m.role, content: m.content }))
+      // 2. Modification verbs → existing endpoint (full LLM tool use: calendar, etc.)
+      if (MODIFY_VERB_RE.test(msg)) {
+        const res = await api.post('/api/ai/chat', { message: msg, history: historyForApi })
+        addAssistantMsg({ content: res.data.reply, actions: res.data.actions || [] })
+        return
+      }
 
-      // No action verb detected → tell backend: text-only, no tools
-      const hasActionVerb = ADD_VERBS.test(msg) || WANT_ADD.test(msg) ||
-                            DELETE_VERBS.test(msg) || DONE_VERBS.test(msg)
-      const res = await api.post('/api/ai/chat', { message: msg, history, no_tools: !hasActionVerb })
-      setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply, actions: res.data.actions || [] }])
+      // 3. Everything else (knowledge, search, questions) → streaming
+      await sendStreaming(msg, historyForApi)
+
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: err?.response?.data?.message || 'משהו השתבש, נסה שוב.', actions: [] }])
+      if (err?.name === 'AbortError') return
+      addAssistantMsg({ content: err?.response?.data?.message || 'משהו השתבש, נסה שוב.', error: true })
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -389,13 +607,14 @@ export default function AiAssistant() {
   }
 
   const resetChat = () => {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
     saveToHistory(messages)
     setMessages(freshGreeting())
     setViewingHist(null)
   }
 
   const displayedMessages = viewingHist ? viewingHist.messages : messages
-  const showSuggestions = !viewingHist && messages.length === 1 && !loading
+  const showSuggestions   = !viewingHist && messages.length === 1 && !loading
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(175deg,#0c1445 0%,#1a2f7a 35%,#1d4ed8 75%,#2563eb 100%)' }}>
@@ -414,7 +633,8 @@ export default function AiAssistant() {
       )}
 
       {/* Header */}
-      <div className="fixed top-0 inset-x-0 z-30" style={{ background: 'rgba(12,20,69,0.85)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingTop: 'env(safe-area-inset-top,0px)' }}>
+      <div className="fixed top-0 inset-x-0 z-30"
+        style={{ background: 'rgba(12,20,69,0.88)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingTop: 'env(safe-area-inset-top,0px)' }}>
         <div className="h-14 max-w-2xl mx-auto px-4 flex items-center justify-between">
           <button onClick={() => navigate(-1)}
             className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
@@ -429,21 +649,19 @@ export default function AiAssistant() {
             </div>
             <div>
               <p className="text-white font-bold text-sm leading-none">עוזר המשפחה</p>
-              <p className="text-blue-300 text-[11px] leading-none mt-0.5">פעיל · AI</p>
+              <p className="text-blue-300 text-[11px] leading-none mt-0.5">מחובר · AI + אינטרנט</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             <button onClick={() => setShowHistory(true)}
-              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors relative"
-              title="היסטוריה">
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors relative">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {history.length > 0 && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-400 rounded-full" />}
             </button>
             <button onClick={resetChat}
-              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-              title="שיחה חדשה">
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
@@ -454,7 +672,6 @@ export default function AiAssistant() {
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto max-w-2xl mx-auto w-full" style={{ paddingTop: '72px', paddingBottom: '130px' }}>
-
         <div className="flex flex-col items-center pt-8 pb-6">
           <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-700 flex items-center justify-center text-4xl shadow-2xl mb-3 ring-4 ring-white/10">🤖</div>
           <p className="text-white font-bold text-lg tracking-wide">עוזר המשפחה</p>
@@ -463,17 +680,21 @@ export default function AiAssistant() {
 
         {viewingHist && <ViewingHistoryBanner date={viewingHist.date} onClose={() => setViewingHist(null)} />}
 
-        <div className="space-y-1 pb-2">
-          {displayedMessages.map((msg, i) => <Message key={i} msg={msg} />)}
-          {loading && <TypingDots />}
+        <div className="space-y-0.5 pb-2">
+          {displayedMessages.map(msg => (
+            <Message key={msg.id || msg.role + msg.content?.slice(0, 20)}
+              msg={msg}
+              onQuickAction={qMsg => send(qMsg)}
+            />
+          ))}
 
           {showSuggestions && (
-            <div className="px-4 pt-3" dir="rtl">
-              <p className="text-blue-300/80 text-xs mb-2.5">נסה לשאול:</p>
+            <div className="px-4 pt-4" dir="rtl">
+              <p className="text-blue-300/70 text-xs mb-3 font-medium">נסה לשאול:</p>
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map(s => (
                   <button key={s.text} onClick={() => send(s.text)}
-                    className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/20 border border-white/15 rounded-full px-3 py-1.5 text-white transition-all active:scale-95">
+                    className="flex items-center gap-1.5 text-xs bg-white/10 hover:bg-white/18 border border-white/14 rounded-full px-3 py-1.5 text-white transition-all active:scale-95">
                     <span>{s.icon}</span><span>{s.text}</span>
                   </button>
                 ))}
@@ -503,13 +724,23 @@ export default function AiAssistant() {
                 className="flex-1 resize-none bg-transparent text-sm text-white placeholder-white/40 focus:outline-none leading-relaxed max-h-28 overflow-y-auto py-1"
                 style={{ direction: 'rtl' }}
               />
-              <button onClick={() => send()} disabled={!input.trim() || loading}
-                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mb-0.5 transition-all disabled:opacity-25 active:scale-95"
-                style={{ background: input.trim() && !loading ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'rgba(255,255,255,0.15)' }}>
-                <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                </svg>
-              </button>
+              {loading ? (
+                <button onClick={() => { if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; setLoading(false) } }}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mb-0.5 bg-red-500/30 hover:bg-red-500/50 transition-all"
+                  title="עצור">
+                  <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="4" y="4" width="16" height="16" rx="2" />
+                  </svg>
+                </button>
+              ) : (
+                <button onClick={() => send()} disabled={!input.trim()}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mb-0.5 transition-all disabled:opacity-25 active:scale-95"
+                  style={{ background: input.trim() ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'rgba(255,255,255,0.15)' }}>
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
         </div>
