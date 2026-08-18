@@ -7,17 +7,6 @@ clientsClaim()
 cleanupOutdatedCaches()
 precacheAndRoute(self.__WB_MANIFEST)
 
-// When this new SW activates, reload all open pages so they pick up fresh JS.
-// Without this, the old JS bundle keeps running even after skipWaiting+clientsClaim.
-self.addEventListener('activate', event => {
-  event.waitUntil((async () => {
-    try {
-      await self.clients.claim()
-      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      await Promise.all(clients.map(c => c.navigate(c.url).catch(() => {})))
-    } catch {}
-  })())
-})
 
 self.addEventListener('push', event => {
   const data = event.data?.json() || {}
