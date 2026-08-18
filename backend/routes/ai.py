@@ -122,20 +122,11 @@ GEMINI_MODELS = [
     'gemini-2.0-flash',
 ]
 
-# Keywords that indicate a web search would help answer the question
-_SEARCH_KEYWORDS_RE = re.compile(
-    r'(?:'
-    r'מתכון|הכנת|איך\s+(?:מכינים|מבשלים|עושים|מכינ|מכין)|בישול|לבשל|מנה\s+|ארוחת|'
-    r'מחיר|מחירים|כמה\s+עולה|איפה\s+(?:אפשר\s+)?לקנות|'
-    r'חדשות|עדכון\s+על|מה\s+קורה|'
-    r'מה\s+זה\s|מה\s+ה|מי\s+(?:הוא|היא|זה|זו)\s|איך\s+(?:זה|עובד)|מדוע|למה\s+ה|'
-    r'חפש\s+לי|מצא\s+לי|תמצא\s+לי|תחפש\s+לי|חפשי\s+לי|'
-    r'המלצ(?:ה|ות)|ביקורת|'
-    r'מסעדות|בית\s+קפה|בתי\s+קפה|מקום\s+ל|'
-    r'טיול|מלון|נסיעה|יעד|'
-    r'שעות\s+פתיחה|פתוח\s+(?:עכשיו|היום)|כרטיסים\s+ל|'
-    r'ספר\s+לי\s+על|תסביר\s+לי|הסבר\s+לי|מהו\s|מהי\s'
-    r')',
+# Short conversational phrases that don't need web search
+_CONVERSATIONAL_RE = re.compile(
+    r'^(?:שלום|היי|הי|בוקר\s+טוב|ערב\s+טוב|לילה\s+טוב|תודה|בסדר|כן|לא|אוקי|אוקיי|'
+    r'נכון|מגניב|יופי|סבבה|ברור|וואו|מעולה|כן\s+בבקשה|תודה\s+רבה|'
+    r'עזור\s+לי|עזרי\s+לי|המשך|תמשיך|מה\s+שלומך|מה\s+שלום|שלומך|בבקשה)[\s!?.]*$',
     re.IGNORECASE
 )
 
@@ -176,7 +167,9 @@ def _get_family_context(user):
                     s += f' ב-{e["time"]}'
                 s += f' ({e.get("date", "")})'
                 ev_strs.append(s)
-            parts.append(f'אירועים השבוע: {" | ".join(ev_strs)}')
+            parts.append(f'אירועים אמיתיים בדאטאבייס (דווח רק עליהם, אל תוסיף): {" | ".join(ev_strs)}')
+        else:
+            parts.append('אירועים: אין אירועים קרובים ביומן (אל תמציא)')
         if tasks_count:
             parts.append(f'משימות פתוחות: {tasks_count}')
         if shopping_count:
@@ -650,6 +643,12 @@ SYSTEM_PROMPT = """אתה עוזר המשפחה — AI חכם ועם אופי א
 כלי האפליקציה — כלל אחד פשוט:
 השתמש בכלים (add_shopping_items, create_task וכו') רק כשהמשתמש ביקש פעולה מפורשת כמו "תוסיף", "תמחק", "תצור". שיחה רגילה, שאלות, ברכות — ענה בטקסט ללא כלים.
 
+⚠️ כלל ברזל — אל תמציא נתוני משפחה:
+NEVER invent or hallucinate family events, tasks, shopping items, or personal data.
+אם אתה רואה בהקשר המשפחתי (בראש ההודעה): "אירועים השבוע: ..." — אלה אירועי המשפחה האמיתיים. דווח רק עליהם, בלי להוסיף.
+אם אין אירועים בהקשר → תגיד "אין אירועים קרובים ביומן".
+אל תייצר תאריכים, פגישות, ימי הולדת, משימות או קניות שלא רשומים במפורש בהקשר.
+
 כשמביא מתכון: חפש קישורים אמיתיים, ובסוף שאל אם להוסיף מצרכים לקניות.
 כשלא בטוח בעובדה — חפש לפני שאתה אומר "לא יודע".
 קישורים: [שם האתר](URL)
@@ -823,6 +822,41 @@ def _keyword_parse_basic(message, user):
         lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
         return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
 
+    # ── Show calendar/events: "מה יש השבוע/היום ביומן/לוח שנה/אירועים" ─
+    _CALENDAR_QUERY_RE = re.compile(
+        r'(?:'
+        r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ה)?(?:יום|מחר|השבוע|הערב|בשבוע|הקרוב|בחודש|הבא)(?:\s+ב)?(?:יומן|לוח|אירועים?)?|'
+        r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ב)?(?:יומן|לוח\s+שנה|אירועים?)|'
+        r'(?:מה|אילו|יש)\s+(?:אירועים?|תאריכים?|פגישות?|ימי\s+הולדת)(?:\s+(?:קרובים?|בקרוב|השבוע|הקרובים?))?|'
+        r'תראה\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:יומן|לוח\s+שנה|אירועים?|לוח)|'
+        r'(?:ה)?יומן|אירועים\s+(?:קרובים?|השבוע)|מה\s+(?:יש\s+)?(?:לנו\s+)?(?:בתאריך|ב-)'
+        r')',
+        re.IGNORECASE
+    )
+    if _CALENDAR_QUERY_RE.search(msg):
+        result = execute_tool('get_upcoming_events', {}, user)
+        events = result.get('events', [])
+        if not events:
+            return '📅 אין אירועים קרובים ביומן שלכם.', []
+        now_d  = datetime.now(timezone.utc)
+        today  = now_d.strftime('%Y-%m-%d')
+        tmrw   = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
+        week   = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
+
+        def _label(date_str):
+            if date_str == today:  return 'היום'
+            if date_str == tmrw:   return 'מחר'
+            if date_str <= week:   return f'ב-{date_str}'
+            return f'{date_str}'
+
+        lines = []
+        for e in events[:10]:
+            d = e.get('date', '')
+            t = f' ב-{e["time"]}' if e.get('time') else ''
+            lines.append(f'{e.get("emoji","📅")} **{e.get("title","")}** — {_label(d)}{t}')
+        header = f'📅 **אירועים קרובים ({len(events)}):**\n'
+        return header + '\n'.join(lines), []
+
     return None, None
 
 
@@ -833,6 +867,11 @@ _ACTION_RE = re.compile(
     r'תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|'
     r'סמן|תסמן|בצע|תבצע|השלם|תשלים|'
     r'תחפש|חפש|תחפשי|חפשי|'
+    r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ה)?(?:יום|מחר|השבוע|הערב)(?:\s+ב)?(?:יומן|אירועים?)?|'
+    r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ב)?(?:יומן|לוח\s+שנה|אירועים?)|'
+    r'(?:מה|אילו|יש)\s+(?:אירועים?|תאריכים?|פגישות?)(?:\s+(?:קרובים?|בקרוב|השבוע))?|'
+    r'תראה\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:יומן|לוח\s+שנה|אירועים?)|'
+    r'מה\s+(?:יש\s+)?(?:ב)?(?:משימות|רשימ(?:ה|ת)|קניות)|'
     r'אשמח\s+(?:אם\s+)?(?:ש)?ת(?:וסיף|כניס|צור)|'
     r'(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|'
     r'(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!ל(?:עשות|לעשות)))',
@@ -994,37 +1033,53 @@ def ai_chat_stream():
                 msgs.append({'role': h['role'], 'content': str(h['content'])})
         msgs.append({'role': 'user', 'content': message})
 
-        all_actions = []
-        sources     = []
-        images_out  = []
+        all_actions   = []
+        sources       = []
+        images_out    = []
+        already_searched = False
 
-        # Pre-search when query is clearly knowledge/recipe/search
-        if _tavily_client and _SEARCH_KEYWORDS_RE.search(message):
-            yield ev({'type': 'tool_start', 'name': 'web_search', 'query': message[:80]})
-            yield ev({'type': 'status', 'text': f'🔍 מחפש: {message[:50]}...'})
+        # Decide whether to pre-search:
+        # Search for any factual/knowledge query that isn't a short conversational phrase.
+        # This ensures the AI can answer ANY question, not just those matching specific keywords.
+        _should_search = (
+            _tavily_client and
+            len(message) > 12 and
+            not _CONVERSATIONAL_RE.match(message.strip())
+        )
+
+        def _do_tavily_search(query, max_results=5, include_images=True):
+            nonlocal already_searched, sources, images_out
+            yield ev({'type': 'tool_start', 'name': 'web_search', 'query': query[:80]})
+            yield ev({'type': 'status', 'text': f'🔍 מחפש: {query[:50]}...'})
             try:
-                resp = _tavily_client.search(message, max_results=5, include_answer=True, include_images=True)
+                resp = _tavily_client.search(query, max_results=max_results, include_answer=True, include_images=include_images)
                 results_list = [
                     {'title': r.get('title', ''), 'url': r.get('url', ''), 'content': r.get('content', '')[:400]}
-                    for r in resp.get('results', [])[:5]
+                    for r in resp.get('results', [])[:max_results]
                 ]
-                images_out = [img for img in (resp.get('images') or []) if isinstance(img, str)][:4]
+                if include_images:
+                    images_out = [img for img in (resp.get('images') or []) if isinstance(img, str)][:4]
                 search_result = {
-                    'query': message, 'answer': resp.get('answer', ''),
+                    'query': query, 'answer': resp.get('answer', ''),
                     'results': results_list, 'images': images_out,
                 }
                 all_actions.append({'tool': 'web_search', 'result': search_result})
-                sources = results_list
+                if not sources:
+                    sources = results_list
                 yield ev({'type': 'tool_done', 'name': 'web_search', 'result': search_result})
 
                 ctx = 'תוצאות חיפוש:\n'
                 if resp.get('answer'):
                     ctx += f'תשובה מסוכמת: {resp["answer"]}\n\n'
                 for i, r in enumerate(results_list[:5]):
-                    ctx += f'{i+1}. {r["title"]}\n{r["url"]}\n{r["content"][:200]}\n\n'
+                    ctx += f'{i+1}. {r["title"]}\n{r.get("url","")}\n{r["content"][:200]}\n\n'
                 msgs.append({'role': 'user', 'content': f'[{ctx.strip()}]'})
+                already_searched = True
             except Exception as se:
                 print(f'[stream/search] {se!r}', file=_sys.stderr)
+
+        if _should_search:
+            yield from _do_tavily_search(message)
 
         yield ev({'type': 'status', 'text': '💭 מנסח תשובה...'})
 
@@ -1069,6 +1124,16 @@ def ai_chat_stream():
                 [_groq_client],
                 [MODEL_FALLBACK, MODEL_EXTRA2, 'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'],
             )
+
+        # Fallback: if nothing worked and we haven't searched yet — try search + one more attempt
+        if not streamed[0] and _tavily_client and not already_searched:
+            yield ev({'type': 'status', 'text': '🔍 מחפש מידע עדכני...'})
+            yield from _do_tavily_search(message, max_results=3, include_images=False)
+            if already_searched:
+                full_text.clear()
+                yield from do_stream([_gemini_client, _gemini_client2], GEMINI_MODELS[:2])
+                if not streamed[0] and _groq_client:
+                    yield from do_stream([_groq_client], [MODEL_FALLBACK])
 
         if streamed[0]:
             final_reply = ''.join(full_text).strip()
