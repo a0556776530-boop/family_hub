@@ -1065,7 +1065,10 @@ def ai_chat_stream():
             )
 
         if streamed[0]:
-            final_reply = ''.join(full_text)
+            final_reply = ''.join(full_text).strip()
+            if not final_reply:
+                yield ev({'type': 'error', 'message': 'קיבלתי תשובה ריקה מה-AI — נסה שוב 🔄'})
+                return
             cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, final_reply, all_actions, sources)
             yield ev({
                 'type': 'done', 'reply': final_reply,

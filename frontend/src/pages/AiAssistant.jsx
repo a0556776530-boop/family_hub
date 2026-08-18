@@ -746,6 +746,10 @@ export default function AiAssistant() {
               break
             case 'done': {
               const finalContent = ev.reply || ''
+              if (!finalContent.trim()) {
+                upd(m => ({ ...m, content: 'לא הצלחתי לנסח תשובה — לחץ "נסה שוב"', streaming: false, status: null, error: true }))
+                break
+              }
               const qas = generateQuickActions(finalContent, ev.sources || [])
               if (ev.conversation_id) setConversationId(ev.conversation_id)
               upd(m => ({
