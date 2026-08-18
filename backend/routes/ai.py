@@ -3,7 +3,7 @@ import json
 import re
 from flask import Blueprint, request, jsonify, Response, stream_with_context
 from bson import ObjectId
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app import mongo
 from utils.jwt_utils import require_auth
 
@@ -61,15 +61,67 @@ GEMINI_MODELS = [
 
 # Keywords that indicate a web search would help answer the question
 _SEARCH_KEYWORDS_RE = re.compile(
-    r'(?:מתכון|הכנת|איך\s+(?:מכינים|מבשלים|עושים|מכינ)|בישול\s+|לבשל|'
-    r'מחיר\s|מחירים|חדשות|'
-    r'מה\s+זה\s|מי\s+(?:הוא|היא)\s|'
-    r'חפש\s+לי|מצא\s+לי|תמצא\s+לי|'
+    r'(?:'
+    r'מתכון|הכנת|איך\s+(?:מכינים|מבשלים|עושים|מכינ|מכין)|בישול|לבשל|מנה\s+|ארוחת|'
+    r'מחיר|מחירים|כמה\s+עולה|איפה\s+(?:אפשר\s+)?לקנות|'
+    r'חדשות|עדכון\s+על|מה\s+קורה|'
+    r'מה\s+זה\s|מה\s+ה|מי\s+(?:הוא|היא|זה|זו)\s|איך\s+(?:זה|עובד)|מדוע|למה\s+ה|'
+    r'חפש\s+לי|מצא\s+לי|תמצא\s+לי|תחפש\s+לי|חפשי\s+לי|'
     r'המלצ(?:ה|ות)|ביקורת|'
-    r'מסעדות|בית\s+קפה|בתי\s+קפה|'
-    r'שעות\s+פתיחה|כרטיסים\s+ל)',
+    r'מסעדות|בית\s+קפה|בתי\s+קפה|מקום\s+ל|'
+    r'טיול|מלון|נסיעה|יעד|'
+    r'שעות\s+פתיחה|פתוח\s+(?:עכשיו|היום)|כרטיסים\s+ל|'
+    r'ספר\s+לי\s+על|תסביר\s+לי|הסבר\s+לי|מהו\s|מהי\s'
+    r')',
     re.IGNORECASE
 )
+
+# Patterns for operations that should require explicit user confirmation
+_DESTRUCTIVE_RE = re.compile(
+    r'(?:מחק|תמחק|נקה|תנקה|הסר|תסיר|ביטול|בטל)\s+(?:הכל|כל\s+ה|את\s+כל|הרשימה\s+כולה|כולם)',
+    re.IGNORECASE
+)
+
+
+def _get_family_context(user):
+    """Query DB for lightweight family snapshot to inject into system prompt."""
+    try:
+        family_id = user.get('family_id', '')
+        if not family_id:
+            return ''
+        now       = datetime.now(timezone.utc)
+        today_str = now.strftime('%Y-%m-%d')
+        week_str  = (now + timedelta(days=7)).strftime('%Y-%m-%d')
+
+        events = list(mongo.db.events.find(
+            {'family_id': family_id, 'date': {'$gte': today_str, '$lte': week_str}}
+        ).sort('date', 1).limit(5))
+        tasks_count    = mongo.db.tasks.count_documents({'family_id': family_id, 'status': 'pending'})
+        shopping_count = mongo.db.shopping_items.count_documents({'family_id': family_id, 'done': False})
+        members        = list(mongo.db.users.find({'family_id': family_id}, {'name': 1, '_id': 0}))
+
+        parts = []
+        if members:
+            names = [m.get('name', '').split()[0] for m in members if m.get('name')]
+            if names:
+                parts.append(f'בני המשפחה: {", ".join(names)}')
+        if events:
+            ev_strs = []
+            for e in events:
+                s = e.get('emoji', '📅') + ' ' + e.get('title', '')
+                if e.get('time'):
+                    s += f' ב-{e["time"]}'
+                s += f' ({e.get("date", "")})'
+                ev_strs.append(s)
+            parts.append(f'אירועים השבוע: {" | ".join(ev_strs)}')
+        if tasks_count:
+            parts.append(f'משימות פתוחות: {tasks_count}')
+        if shopping_count:
+            parts.append(f'פריטים לקנייה: {shopping_count}')
+
+        return '\n'.join(parts)
+    except Exception:
+        return ''
 
 # ─── Tools ─────────────────────────────────────────────────────────────────
 
@@ -849,9 +901,13 @@ def ai_chat_stream():
                 yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': []})
                 return
 
-        # Knowledge path: build message list
-        today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-        msgs = [{'role': 'system', 'content': SYSTEM_PROMPT.replace('{today}', today_str)}]
+        # Knowledge path: build message list with family context
+        today_str   = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+        system_text = SYSTEM_PROMPT.replace('{today}', today_str)
+        fam_ctx     = _get_family_context(user)
+        if fam_ctx:
+            system_text += f'\n\nהקשר משפחתי (עדכני):\n{fam_ctx}'
+        msgs = [{'role': 'system', 'content': system_text}]
         for h in history_raw[-20:]:
             if h.get('role') in ('user', 'assistant') and h.get('content'):
                 msgs.append({'role': h['role'], 'content': str(h['content'])})
@@ -981,6 +1037,9 @@ def ai_chat():
 
     today_str = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     system    = SYSTEM_PROMPT.replace('{today}', today_str)
+    fam_ctx   = _get_family_context(user)
+    if fam_ctx:
+        system += f'\n\nהקשר משפחתי (עדכני):\n{fam_ctx}'
 
     messages = [{'role': 'system', 'content': system}]
     for h in history[-20:]:
@@ -1005,12 +1064,16 @@ def ai_chat():
             no_web_kwargs['tools'] = [t for t in no_web_kwargs['tools'] if t['function']['name'] != 'web_search']
 
         # Tier 1: try all Gemini models with both API keys
+        # Try with full kwargs (tools) first; fall back to simple if model rejects them
         for gclient, glabel in [(_gemini_client, 'key1'), (_gemini_client2, 'key2')]:
             if not gclient:
                 continue
             for gmodel in GEMINI_MODELS:
                 try:
-                    resp = gclient.chat.completions.create(model=gmodel, **simple)
+                    try:
+                        resp = gclient.chat.completions.create(model=gmodel, **kwargs)
+                    except Exception:
+                        resp = gclient.chat.completions.create(model=gmodel, **simple)
                     return resp, gmodel
                 except Exception as e:
                     print(f'[AI] Gemini {gmodel} ({glabel}) failed: {e!r}', file=sys.stderr)
