@@ -30,6 +30,18 @@ self.addEventListener('push', event => {
     return
   }
 
+  if (data.type === 'stop_ring') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        .then(list => {
+          list.forEach(c => c.postMessage({ type: 'stop_ring' }))
+          return self.registration.getNotifications({ tag: 'ring' })
+        })
+        .then(notes => notes.forEach(n => n.close()))
+    )
+    return
+  }
+
   event.waitUntil(
     self.registration.showNotification(data.title || 'Family Hub 🏠', {
       body:    data.body  || '',

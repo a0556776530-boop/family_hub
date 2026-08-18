@@ -104,3 +104,25 @@ def ring_phone(target_user_id):
             sent += 1
 
     return jsonify({'message': 'נשלח', 'sent': sent}), 200
+
+
+@notifications_bp.route('/ring/<target_user_id>/stop', methods=['POST'])
+@require_auth
+def stop_ring(target_user_id):
+    caller = request.current_user
+    try:
+        target = mongo.db.users.find_one({'_id': ObjectId(target_user_id)})
+    except Exception:
+        return jsonify({'error': 'invalid_id'}), 400
+    if not target:
+        return jsonify({'error': 'user_not_found'}), 404
+    if target.get('family_id') != caller.get('family_id'):
+        return jsonify({'error': 'forbidden'}), 403
+
+    sent = 0
+    if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
+        for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
+            _send_push(sub, {'type': 'stop_ring'})
+            sent += 1
+
+    return jsonify({'message': 'עצור', 'sent': sent}), 200

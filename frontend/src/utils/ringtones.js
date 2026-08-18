@@ -6,7 +6,7 @@ export const RINGTONES = [
   { id: 'urgent',   label: 'דחוף',   desc: 'אזעקה מהירה' },
 ]
 
-export const RINGTONE_KEY    = 'fh_ringtone'
+export const RINGTONE_KEY     = 'fh_ringtone'
 export const DEFAULT_RINGTONE = 'classic'
 
 export function getSelectedRingtone() {
@@ -17,44 +17,76 @@ export function setSelectedRingtone(id) {
   localStorage.setItem(RINGTONE_KEY, id)
 }
 
-// Returns { stop, duration }
+// loops = 0  → infinite, rings until stop() is called
+// loops > 0  → fixed number of repetitions
 export function playRingtone(id, loops = 6) {
   try {
     const ctx = new AudioContext()
     if (ctx.state === 'suspended') ctx.resume()
-    const nodes = []
-    let totalDuration = 0
 
-    const schedule = buildSchedule(id, ctx.currentTime + 0.05, loops)
-    totalDuration = schedule.totalDuration
+    if (loops === 0) {
+      let stopped = false
+      let rescheduleTimer = null
 
-    for (const note of schedule.notes) {
-      const gain = ctx.createGain()
-      gain.connect(ctx.destination)
-      gain.gain.setValueAtTime(0, note.start)
-      gain.gain.linearRampToValueAtTime(note.vol ?? 0.45, note.start + 0.01)
-      gain.gain.setValueAtTime(note.vol ?? 0.45, note.end - 0.02)
-      gain.gain.linearRampToValueAtTime(0, note.end)
+      function scheduleNext(startAt) {
+        if (stopped) return
+        const { notes, totalDuration } = buildSchedule(id, startAt, 1)
+        playNotes(ctx, notes)
+        const msUntilEnd = (startAt + totalDuration - ctx.currentTime) * 1000 - 150
+        rescheduleTimer = setTimeout(
+          () => scheduleNext(startAt + totalDuration),
+          Math.max(10, msUntilEnd),
+        )
+      }
 
-      const freqs = Array.isArray(note.freq) ? note.freq : [note.freq]
-      for (const freq of freqs) {
-        const osc = ctx.createOscillator()
-        osc.type = note.type || 'sine'
-        osc.frequency.value = freq
-        osc.connect(gain)
-        osc.start(note.start)
-        osc.stop(note.end)
-        nodes.push(osc)
+      scheduleNext(ctx.currentTime + 0.05)
+
+      return {
+        duration: Infinity,
+        stop: () => {
+          stopped = true
+          clearTimeout(rescheduleTimer)
+          try { ctx.close() } catch {}
+        },
       }
     }
 
+    // Fixed loops — schedule everything upfront
+    const schedule = buildSchedule(id, ctx.currentTime + 0.05, loops)
+    const nodes    = playNotes(ctx, schedule.notes)
     return {
-      duration: totalDuration,
-      stop: () => { try { nodes.forEach(n => { try { n.stop() } catch {} }); ctx.close() } catch {} },
+      duration: schedule.totalDuration,
+      stop: () => {
+        try { nodes.forEach(n => { try { n.stop() } catch {} }); ctx.close() } catch {}
+      },
     }
   } catch {
     return { duration: 10, stop: () => {} }
   }
+}
+
+function playNotes(ctx, notes) {
+  const nodes = []
+  for (const note of notes) {
+    const gain = ctx.createGain()
+    gain.connect(ctx.destination)
+    gain.gain.setValueAtTime(0, note.start)
+    gain.gain.linearRampToValueAtTime(note.vol ?? 0.80, note.start + 0.003) // sharp attack
+    gain.gain.setValueAtTime(note.vol ?? 0.80, note.end - 0.015)
+    gain.gain.linearRampToValueAtTime(0, note.end)
+
+    const freqs = Array.isArray(note.freq) ? note.freq : [note.freq]
+    for (const freq of freqs) {
+      const osc = ctx.createOscillator()
+      osc.type = note.type || 'sine'
+      osc.frequency.value = freq
+      osc.connect(gain)
+      osc.start(note.start)
+      osc.stop(note.end)
+      nodes.push(osc)
+    }
+  }
+  return nodes
 }
 
 function buildSchedule(id, t0, loops) {
@@ -62,38 +94,35 @@ function buildSchedule(id, t0, loops) {
   let t = t0
 
   if (id === 'classic') {
-    // UK dual-tone: 400+450 Hz, ring-ring...pause
     const pattern = [
       { on: 0.40, off: 0.20 },
       { on: 0.40, off: 2.00 },
     ]
     for (let i = 0; i < loops; i++) {
       for (const { on, off } of pattern) {
-        notes.push({ freq: [400, 450], start: t, end: t + on })
+        notes.push({ freq: [400, 450], start: t, end: t + on, vol: 0.82 })
         t += on + off
       }
     }
   }
 
   else if (id === 'modern') {
-    // Ascending 4-note chirp repeated
-    const chord = [523, 659, 784, 1047] // C5 E5 G5 C6
+    const chord = [523, 659, 784, 1047]
     for (let i = 0; i < loops; i++) {
       for (let j = 0; j < chord.length; j++) {
-        notes.push({ freq: chord[j], start: t, end: t + 0.08, vol: 0.4 })
+        notes.push({ freq: chord[j], start: t, end: t + 0.08, vol: 0.78 })
         t += 0.09
       }
-      t += 0.55 // pause between chirps
+      t += 0.55
     }
   }
 
   else if (id === 'musical') {
-    // Simple marimba-style melody: G5 E5 C5 D5 | G5 ...
     const melody = [784, 659, 523, 587, 784, 659, 523]
     const dur    = 0.18
     for (let i = 0; i < loops; i++) {
       for (const freq of melody) {
-        notes.push({ freq, start: t, end: t + dur * 0.85, vol: 0.38, type: 'triangle' })
+        notes.push({ freq, start: t, end: t + dur * 0.85, vol: 0.75, type: 'triangle' })
         t += dur
       }
       t += 0.45
@@ -101,19 +130,16 @@ function buildSchedule(id, t0, loops) {
   }
 
   else if (id === 'beep') {
-    // Sharp single-tone beep
     for (let i = 0; i < loops * 3; i++) {
-      notes.push({ freq: 1000, start: t, end: t + 0.12, vol: 0.55 })
+      notes.push({ freq: 1100, start: t, end: t + 0.12, vol: 0.88 })
       t += 0.50
     }
   }
 
   else if (id === 'urgent') {
-    // Fast alternating alarm
-    const pair = [800, 600]
+    const pair = [950, 720]
     for (let i = 0; i < loops * 5; i++) {
-      const freq = pair[i % 2]
-      notes.push({ freq, start: t, end: t + 0.18, vol: 0.5 })
+      notes.push({ freq: pair[i % 2], start: t, end: t + 0.18, vol: 0.88 })
       t += 0.20
     }
     t += 0.4

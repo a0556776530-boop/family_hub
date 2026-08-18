@@ -9,10 +9,10 @@ import api from '../api/client'
 const RING_COOLDOWN_MS = 30_000
 
 function useRingPhone() {
-  const [ringing, setRinging]   = useState(null)  // user_id being rung
-  const [ringDone, setRingDone] = useState({})     // { [user_id]: timestamp }
-
-  const [ringMsg, setRingMsg] = useState(null) // { text, ok }
+  const [ringing,    setRinging]    = useState(null)  // user_id being rung
+  const [ringDone,   setRingDone]   = useState({})    // { [user_id]: timestamp }
+  const [ringMsg,    setRingMsg]    = useState(null)  // { text, ok }
+  const [activeRing, setActiveRing] = useState(null)  // { userId } while ring is live
 
   const ring = useCallback(async (userId) => {
     setRinging(userId)
@@ -24,6 +24,9 @@ function useRingPhone() {
         setRingMsg({ text: 'הטלפון לא מחובר להתראות — על הילד לפתוח את האפ ולאשר התראות', ok: false })
       } else {
         setRingMsg({ text: 'הצלצול נשלח!', ok: true })
+        setActiveRing({ userId })
+        // Auto-clear active ring after 2 minutes
+        setTimeout(() => setActiveRing(a => a?.userId === userId ? null : a), 120_000)
         setTimeout(() => setRingMsg(null), 3000)
       }
     } catch {
@@ -31,6 +34,11 @@ function useRingPhone() {
     } finally {
       setRinging(null)
     }
+  }, [])
+
+  const stopRing = useCallback(async (userId) => {
+    setActiveRing(null)
+    try { await api.post(`/api/notifications/ring/${userId}/stop`) } catch {}
   }, [])
 
   const canRing = useCallback((userId) => {
@@ -44,7 +52,7 @@ function useRingPhone() {
     return left > 0 ? Math.ceil(left / 1000) : 0
   }, [ringDone])
 
-  return { ring, ringing, ringMsg, canRing, cooldownLeft }
+  return { ring, stopRing, ringing, ringMsg, canRing, cooldownLeft, activeRing }
 }
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
@@ -97,7 +105,7 @@ export default function FamilyMap() {
   const [error,       setError]       = useState('')
   const [selected,    setSelected]    = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
-  const { ring, ringing, ringMsg, canRing, cooldownLeft } = useRingPhone()
+  const { ring, stopRing, ringing, ringMsg, canRing, cooldownLeft, activeRing } = useRingPhone()
   const [, forceUpdate] = useState(0)
 
   // Tick cooldown display every second
@@ -121,6 +129,13 @@ export default function FamilyMap() {
   }, [])
 
   useEffect(() => { if (isParent) load() }, [isParent, load])
+
+  // Keep selected child in sync when children list refreshes
+  useEffect(() => {
+    if (!selected) return
+    const updated = children.find(c => c.user_id === selected.user_id)
+    if (updated) setSelected(updated)
+  }, [children])
 
   useEffect(() => {
     if (!isParent) return
@@ -346,6 +361,12 @@ export default function FamilyMap() {
                   {ringMsg.text}
                 </div>
               )}
+              {activeRing?.userId === selected.user_id && (
+                <button onClick={() => stopRing(selected.user_id)}
+                  className="w-full py-3 rounded-2xl bg-red-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform mb-2 shadow-lg">
+                  <span className="text-base">🛑</span> עצור צלצול
+                </button>
+              )}
               <div className="flex gap-2.5 mb-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}
                   target="_blank" rel="noreferrer"
@@ -357,20 +378,21 @@ export default function FamilyMap() {
                   ניווט
                 </a>
                 {(() => {
-                  const uid   = selected.user_id
-                  const busy  = ringing === uid
-                  const ok    = canRing(uid)
-                  const secs  = cooldownLeft(uid)
+                  const uid      = selected.user_id
+                  const busy     = ringing === uid
+                  const ok       = canRing(uid)
+                  const secs     = cooldownLeft(uid)
+                  const isActive = activeRing?.userId === uid
                   return (
                     <button
-                      onClick={() => ok && !busy && ring(uid)}
-                      disabled={busy || !ok}
+                      onClick={() => ok && !busy && !isActive && ring(uid)}
+                      disabled={busy || !ok || isActive}
                       className={`flex-1 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all
-                        ${ok && !busy
+                        ${ok && !busy && !isActive
                           ? 'bg-emerald-500 text-white'
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}>
                       <span className="text-base">{busy ? '⏳' : '📳'}</span>
-                      {busy ? 'שולח...' : ok ? 'צלצל' : `${secs}s`}
+                      {busy ? 'שולח...' : isActive ? 'מצלצל...' : ok ? 'צלצל' : `${secs}s`}
                     </button>
                   )
                 })()}

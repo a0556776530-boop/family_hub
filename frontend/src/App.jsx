@@ -61,7 +61,8 @@ function useRingListener() {
   const [ring, setRing] = useState(null) // { caller: string } | null
   useEffect(() => {
     const handler = (e) => {
-      if (e.data?.type === 'ring') setRing({ caller: e.data.caller || '' })
+      if (e.data?.type === 'ring')      setRing({ caller: e.data.caller || '' })
+      if (e.data?.type === 'stop_ring') setRing(null)
     }
     navigator.serviceWorker?.addEventListener('message', handler)
     return () => navigator.serviceWorker?.removeEventListener('message', handler)

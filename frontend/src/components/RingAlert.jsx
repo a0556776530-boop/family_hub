@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { playRingtone, getSelectedRingtone } from '../utils/ringtones'
 
-// Dismiss any SW notification tagged 'ring'
 function dismissRingNotification() {
   try {
     navigator.serviceWorker?.ready.then(reg =>
@@ -15,20 +14,15 @@ export default function RingAlert({ caller, onStop }) {
   const [pulse, setPulse] = useState(0)
 
   useEffect(() => {
-    rtRef.current = playRingtone(getSelectedRingtone())
+    // 0 = infinite — rings until Stop is pressed
+    rtRef.current = playRingtone(getSelectedRingtone(), 0)
 
-    // Haptic feedback on devices that support it
     try { navigator.vibrate?.([500, 200, 500, 200, 500, 200, 500, 200, 500]) } catch {}
 
-    // Pulse animation counter
     const pId = setInterval(() => setPulse(p => p + 1), 800)
-
-    // Auto-stop when ringtone ends
-    const tId = setTimeout(() => stop(), (rtRef.current.duration + 0.5) * 1000)
 
     return () => {
       clearInterval(pId)
-      clearTimeout(tId)
       rtRef.current?.stop()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
