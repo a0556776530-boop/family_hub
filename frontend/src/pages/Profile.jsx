@@ -67,8 +67,9 @@ function PwField({ placeholder, value, onChange, autoFocus }) {
 
 // ─── Settings Row ─────────────────────────────────────────────────────────────
 function Row({ icon, label, value, danger, onClick, rightEl, noBorder }) {
+  const Tag = (onClick && !rightEl) ? 'button' : 'div'
   return (
-    <button onClick={onClick} disabled={!onClick}
+    <Tag onClick={onClick}
       className={`w-full flex items-center gap-3.5 px-4 py-3.5 text-right active:bg-gray-50 dark:active:bg-gray-700/60 transition-colors ${!noBorder ? 'border-b border-gray-100 dark:border-gray-700/60' : ''} ${onClick ? 'cursor-pointer' : 'cursor-default'}`}>
       <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-base shrink-0 ${danger ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-50 dark:bg-blue-900/30'}`}>
         {icon}
@@ -82,7 +83,7 @@ function Row({ icon, label, value, danger, onClick, rightEl, noBorder }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       )}
-    </button>
+    </Tag>
   )
 }
 
