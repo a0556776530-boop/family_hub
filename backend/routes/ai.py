@@ -635,23 +635,21 @@ SYSTEM_PROMPT = """אתה עוזר המשפחה — AI חכם ועם אופי א
 האישיות שלך:
 אתה חכם וידוע זאת, אבל לא יהיר. מדבר ישיר, קצר כשאפשר, מעמיק כשצריך. יש לך חוש הומור — עדין, חד, בזמן הנכון. אתה מביע דעות אמיתיות, לא תמיד "שתי הצדדים הגיוניים". אם משהו מצחיק — תצחק. אם משהו לא נכון — תגיד. אתה לא מתחיל תשובות ב"כמובן!" "בטח!" "שאלה מצוינת!" — זה מזויף ומעצבן.
 
-אתה יכול:
-- לענות על כל שאלה — כלום לא אסור, הכל בפתיחות ובחכמה
-- לחפש באינטרנט כשהמידע עדכני או שאתה לא בטוח (web_search)
-- לנהל את האפליקציה המשפחתית: קניות 🛒, יומן 📅, משימות ✅
+ענה על הכל — ספורט, מדע, היסטוריה, אנשים מפורסמים, מתכונים, כל שאלה שהיא.
 
-כלי האפליקציה — כלל אחד פשוט:
-השתמש בכלים (add_shopping_items, create_task וכו') רק כשהמשתמש ביקש פעולה מפורשת כמו "תוסיף", "תמחק", "תצור". שיחה רגילה, שאלות, ברכות — ענה בטקסט ללא כלים.
+⚠️ כלל ברזל — פלט טקסט בלבד, לעולם לא JSON:
+NEVER output JSON, tool-call syntax, {"action": ...}, or any code blocks as your answer.
+Just write a normal Hebrew answer in plain text with markdown formatting.
 
 ⚠️ כלל ברזל — אל תמציא נתוני משפחה:
-NEVER invent or hallucinate family events, tasks, shopping items, or personal data.
-אם אתה רואה בהקשר המשפחתי (בראש ההודעה): "אירועים השבוע: ..." — אלה אירועי המשפחה האמיתיים. דווח רק עליהם, בלי להוסיף.
-אם אין אירועים בהקשר → תגיד "אין אירועים קרובים ביומן".
-אל תייצר תאריכים, פגישות, ימי הולדת, משימות או קניות שלא רשומים במפורש בהקשר.
+NEVER invent family events, tasks, or shopping items.
+אם ההקשר המשפחתי מציג אירועים — דווח רק עליהם. אם אין — תגיד "אין אירועים קרובים".
 
-כשמביא מתכון: חפש קישורים אמיתיים, ובסוף שאל אם להוסיף מצרכים לקניות.
-כשלא בטוח בעובדה — חפש לפני שאתה אומר "לא יודע".
-קישורים: [שם האתר](URL)
+פורמט תשובה:
+- כשיש לך מידע על אנשים/נושאים: תן תשובה מלאה עם עובדות
+- כשיש תוצאות חיפוש ב[...]: השתמש בהן ותצטט קישורים בפורמט [שם המקור](URL)
+- קישורים תמיד כלינקים לחיצים: [כותרת](https://...)
+- בסוף תשובה על אנשים/נושאים: הוסף "🔍 [חפש ב-Google](https://www.google.com/search?q=QUERY)" עם מילות החיפוש המתאימות
 
 תאריך היום: {today}"""
 
@@ -1137,6 +1135,43 @@ def ai_chat_stream():
 
         if streamed[0]:
             final_reply = ''.join(full_text).strip()
+            if not final_reply:
+                yield ev({'type': 'error', 'message': 'קיבלתי תשובה ריקה מה-AI — נסה שוב 🔄'})
+                return
+            # Detect if model output raw JSON tool-call instead of real answer
+            _json_leak = re.match(r'^\s*[\{\}]|"action"\s*:', final_reply)
+            if _json_leak:
+                print(f'[stream] JSON leak detected, retrying without tool context', file=_sys.stderr)
+                # Strip any prior search context and retry with explicit "answer only" instruction
+                msgs_clean = [m for m in msgs if not (m.get('role') == 'user' and m.get('content', '').startswith('[תוצאות'))]
+                msgs_clean.append({'role': 'user', 'content': f'ענה בעברית רגילה (ללא JSON): {message}'})
+                full_text.clear()
+                streamed[0] = False
+                def _do_clean_stream():
+                    for client in [_gemini_client, _gemini_client2, _groq_client]:
+                        if not client: continue
+                        models = GEMINI_MODELS if client != _groq_client else [MODEL_FALLBACK]
+                        for model in models:
+                            try:
+                                st = client.chat.completions.create(
+                                    model=model, messages=msgs_clean,
+                                    temperature=0.7, max_tokens=1024, stream=True,
+                                )
+                                got = False
+                                for chunk in st:
+                                    d = (chunk.choices[0].delta.content or '') if chunk.choices else ''
+                                    if d:
+                                        got = True
+                                        full_text.append(d)
+                                        yield ev({'type': 'delta', 'text': d})
+                                if got:
+                                    streamed[0] = True
+                                    return
+                            except Exception:
+                                continue
+                yield from _do_clean_stream()
+                final_reply = ''.join(full_text).strip()
+
             if not final_reply:
                 yield ev({'type': 'error', 'message': 'קיבלתי תשובה ריקה מה-AI — נסה שוב 🔄'})
                 return
