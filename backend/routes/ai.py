@@ -38,6 +38,20 @@ except Exception:
     _GEMINI_KEY  = ''
     _GEMINI_KEY2 = ''
 
+# Native Gemini SDK with Google Search grounding (same as Gemini.ai)
+_gemini_native = None
+try:
+    import google.generativeai as _genai_sdk
+    if _GEMINI_KEY:
+        _genai_sdk.configure(api_key=_GEMINI_KEY)
+        _gemini_native = _genai_sdk.GenerativeModel(
+            model_name='gemini-2.0-flash',
+            tools='google_search_retrieval',
+        )
+except Exception as _ge:
+    import sys as _sys2
+    print(f'[gemini-native] not available: {_ge}', file=_sys2.stderr)
+
 # AI is available if at least one model provider is configured
 _AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
 
@@ -1146,13 +1160,66 @@ def ai_chat_stream():
             except Exception as se:
                 print(f'[stream/search] {se!r}', file=_sys.stderr)
 
-        if _should_search:
-            yield from _do_tavily_search(message)
-
         yield ev({'type': 'status', 'text': '💭 מנסח תשובה...'})
 
         full_text = []
         streamed  = [False]
+
+        # ── Path 1: Gemini Native with Google Search grounding ────────────────
+        # This is the same technology Gemini.ai uses — real Google Search results
+        if _gemini_native:
+            try:
+                # Build prompt: system + conversation history + user message
+                today_str_g = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+                native_sys  = SYSTEM_PROMPT.replace('{today}', today_str_g)
+                fam_ctx_g   = _get_family_context(user)
+                if fam_ctx_g:
+                    native_sys += f'\n\nהקשר משפחתי:\n{fam_ctx_g}'
+
+                # Flatten to single prompt with history
+                parts = [native_sys + '\n\n']
+                for h in history_raw[-10:]:
+                    role = h.get('role', '')
+                    content = h.get('content', '')
+                    if role == 'user' and content:
+                        parts.append(f'משתמש: {content}\n')
+                    elif role == 'assistant' and content:
+                        parts.append(f'עוזר: {content}\n')
+                parts.append(f'משתמש: {message}\nעוזר:')
+                native_prompt = ''.join(parts)
+
+                yield ev({'type': 'status', 'text': '🔍 מחפש ב-Google...'})
+                import google.generativeai as _gnai
+                _gnai.configure(api_key=_GEMINI_KEY)
+                _native_model = _gnai.GenerativeModel(
+                    model_name='gemini-2.0-flash',
+                    tools='google_search_retrieval',
+                )
+                response = _native_model.generate_content(
+                    native_prompt,
+                    stream=True,
+                    generation_config={'temperature': 0.7, 'max_output_tokens': 2048},
+                )
+                got_native = False
+                for chunk in response:
+                    try:
+                        delta = chunk.text or ''
+                    except Exception:
+                        delta = ''
+                    if delta:
+                        got_native = True
+                        full_text.append(delta)
+                        yield ev({'type': 'delta', 'text': delta})
+                if got_native:
+                    streamed[0] = True
+                    print('[stream] gemini-native with google-search: OK', file=_sys.stderr)
+            except Exception as _ne:
+                print(f'[stream] gemini-native failed: {_ne!r}', file=_sys.stderr)
+
+        # ── Path 2: Tavily pre-search + OpenAI-compat Gemini/Groq ─────────────
+        if not streamed[0]:
+            if _should_search:
+                yield from _do_tavily_search(message)
 
         def do_stream(clients, models):
             for client in clients:
@@ -1185,7 +1252,8 @@ def ai_chat_stream():
                         print(f'[stream] {model}: {me!r}', file=_sys.stderr)
                         continue
 
-        yield from do_stream([_gemini_client, _gemini_client2], GEMINI_MODELS)
+        if not streamed[0]:
+            yield from do_stream([_gemini_client, _gemini_client2], GEMINI_MODELS)
 
         if not streamed[0] and _groq_client:
             yield from do_stream(
