@@ -10,7 +10,7 @@ function dismissRingNotification() {
   } catch {}
 }
 
-export default function RingAlert({ caller, onStop }) {
+export default function RingAlert({ caller, message, onStop }) {
   const rtRef   = useRef(null)
   const stopRef = useRef(null)  // always points to latest stop function
   const [pulse, setPulse] = useState(0)
@@ -60,6 +60,7 @@ export default function RingAlert({ caller, onStop }) {
   const rings = pulse % 2 === 0
 
   return (
+    <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
     <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
       style={{ background: 'linear-gradient(175deg, #1e3a8a 0%, #1d4ed8 50%, #2563eb 100%)' }}
       dir="rtl">
@@ -83,7 +84,17 @@ export default function RingAlert({ caller, onStop }) {
       </div>
 
       <p className="relative z-10 text-blue-200 text-base mb-1 font-medium">מחפשים אותך!</p>
-      <p className="relative z-10 text-white text-2xl font-extrabold mb-12">{caller || 'ההורים'}</p>
+      <p className="relative z-10 text-white text-2xl font-extrabold mb-5">{caller || 'ההורים'}</p>
+
+      {message ? (
+        <div className="relative z-10 mx-8 mb-8 px-5 py-3.5 rounded-2xl bg-white/15 border border-white/25 backdrop-blur-sm"
+          style={{ animation: 'fadeSlideUp 0.4s ease' }}>
+          <p className="text-blue-200 text-xs mb-1 font-semibold tracking-wide">הודעה מההורים</p>
+          <p className="text-white text-base font-bold leading-snug" dir="rtl">{message}</p>
+        </div>
+      ) : (
+        <div className="mb-8" />
+      )}
 
       <button onClick={() => stopRef.current?.()}
         className="relative z-10 bg-white text-blue-700 font-extrabold text-lg px-12 py-4 rounded-3xl shadow-2xl active:scale-95 transition-transform">

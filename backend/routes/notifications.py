@@ -150,6 +150,8 @@ def ring_phone(target_user_id):
         return jsonify({'error': 'forbidden'}), 403
 
     caller_name = caller.get('name', 'ההורים')
+    body        = request.get_json() or {}
+    message     = str(body.get('message', ''))[:60].strip()
 
     # Store ring session (non-blocking — push must go out regardless)
     try:
@@ -158,6 +160,7 @@ def ring_phone(target_user_id):
             {'$set': {
                 'target_user_id': target_user_id,
                 'caller_name':    caller_name,
+                'message':        message,
                 'family_id':      caller.get('family_id', ''),
                 'active':         True,
                 'started_at':     datetime.datetime.utcnow(),
@@ -169,7 +172,7 @@ def ring_phone(target_user_id):
 
     sent = 0
     if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
-        payload = {'type': 'ring', 'caller': caller_name}
+        payload = {'type': 'ring', 'caller': caller_name, 'message': message}
         for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
             _send_push(sub, payload)
             sent += 1

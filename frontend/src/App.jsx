@@ -71,14 +71,14 @@ function useRingListener() {
         ctx.resume().catch(() => {})
         window.__ringAudioCtx = ctx
       } catch {}
-      return { caller: p.get('caller') || 'ההורים' }
+      return { caller: p.get('caller') || 'ההורים', message: p.get('msg') || '' }
     }
     return null
   })
 
   useEffect(() => {
     const handler = (e) => {
-      if (e.data?.type === 'ring')      setRing({ caller: e.data.caller || '' })
+      if (e.data?.type === 'ring')      setRing({ caller: e.data.caller || '', message: e.data.message || '' })
       if (e.data?.type === 'stop_ring') setRing(null)
     }
     navigator.serviceWorker?.addEventListener('message', handler)
@@ -95,7 +95,7 @@ function AppRoutes() {
   if (loading) return <Loader />
   return (
     <>
-    {ring && <RingAlert caller={ring.caller} onStop={stopRing} />}
+    {ring && <RingAlert caller={ring.caller} message={ring.message} onStop={stopRing} />}
     <Routes>
       <Route path="/splash"       element={<Splash />} />
       <Route path="/login"        element={<AuthRoute><Login /></AuthRoute>} />

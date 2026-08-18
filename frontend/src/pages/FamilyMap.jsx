@@ -14,11 +14,11 @@ function useRingPhone() {
   const [ringMsg,    setRingMsg]    = useState(null)  // { text, ok }
   const [activeRing, setActiveRing] = useState(null)  // { userId } while ring is live
 
-  const ring = useCallback(async (userId) => {
+  const ring = useCallback(async (userId, message = '') => {
     setRinging(userId)
     setRingMsg(null)
     try {
-      const res = await api.post(`/api/notifications/ring/${userId}`)
+      const res = await api.post(`/api/notifications/ring/${userId}`, { message: message.trim() })
       setRingDone(d => ({ ...d, [userId]: Date.now() }))
       if (res.data.sent === 0) {
         setRingMsg({ text: 'הטלפון לא מחובר להתראות — על הילד לפתוח את האפ ולאשר התראות', ok: false })
@@ -129,6 +129,7 @@ export default function FamilyMap() {
   const [selected,    setSelected]    = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
   const { ring, stopRing, ringing, ringMsg, canRing, cooldownLeft, activeRing } = useRingPhone()
+  const [ringText,    setRingText]    = useState('')
   const [, forceUpdate] = useState(0)
 
   // Tick cooldown display every second
@@ -390,6 +391,24 @@ export default function FamilyMap() {
                   <span className="text-base">🛑</span> עצור צלצול
                 </button>
               )}
+
+              {/* Message input */}
+              <div className="relative mb-3">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-base pointer-events-none">💬</span>
+                <input
+                  type="text"
+                  value={ringText}
+                  onChange={e => setRingText(e.target.value.slice(0, 60))}
+                  placeholder="כתוב הודעה שתופיע בצלצול..."
+                  className="w-full pr-9 pl-10 py-2.5 rounded-2xl bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 transition"
+                  dir="rtl"
+                  maxLength={60}
+                />
+                {ringText.length > 0 && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 tabular-nums">{60 - ringText.length}</span>
+                )}
+              </div>
+
               <div className="flex gap-2.5 mb-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}
                   target="_blank" rel="noreferrer"
@@ -408,7 +427,7 @@ export default function FamilyMap() {
                   const isActive = activeRing?.userId === uid
                   return (
                     <button
-                      onClick={() => ok && !busy && !isActive && ring(uid)}
+                      onClick={() => ok && !busy && !isActive && ring(uid, ringText)}
                       disabled={busy || !ok || isActive}
                       className={`flex-1 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all
                         ${ok && !busy && !isActive

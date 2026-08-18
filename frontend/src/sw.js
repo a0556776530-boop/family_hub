@@ -11,14 +11,15 @@ self.addEventListener('push', event => {
   const data = event.data?.json() || {}
 
   if (data.type === 'ring') {
-    const caller  = data.caller || 'ההורים'
-    const ringUrl = `/?ring=1&caller=${encodeURIComponent(caller)}`
+    const caller  = data.caller  || 'ההורים'
+    const message = data.message || ''
+    const ringUrl = `/?ring=1&caller=${encodeURIComponent(caller)}&msg=${encodeURIComponent(message)}`
 
     event.waitUntil((async () => {
       const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
       // Broadcast to all open tabs so the ring alert appears immediately
-      list.forEach(c => c.postMessage({ type: 'ring', caller }))
+      list.forEach(c => c.postMessage({ type: 'ring', caller, message }))
 
       // Try to bring app to foreground — wrapped in try/catch so a failure here
       // never prevents the notification from showing below
@@ -31,14 +32,14 @@ self.addEventListener('push', event => {
 
       // Always show the notification — this is what rings on a closed/background device
       await self.registration.showNotification(`📱 ${caller} מחפשים אותך!`, {
-        body:               'הקש כדי לעצור את הצלצול',
+        body:               message || 'הקש כדי לעצור את הצלצול',
         icon:               '/icon-192.svg',
         badge:              '/icon-192.svg',
         vibrate:            [500,150,500,150,500,150,500,150,500,150,500],
         requireInteraction: true,
         tag:                'ring',
         renotify:           true,
-        data:               { caller, ringUrl },
+        data:               { caller, message, ringUrl },
       })
     })())
     return
@@ -71,11 +72,12 @@ self.addEventListener('notificationclick', event => {
   event.notification.close()
 
   if (event.notification.tag === 'ring') {
-    const caller  = event.notification.data?.caller || ''
-    const ringUrl = event.notification.data?.ringUrl || `/?ring=1&caller=${encodeURIComponent(caller)}`
+    const caller  = event.notification.data?.caller  || ''
+    const message = event.notification.data?.message || ''
+    const ringUrl = event.notification.data?.ringUrl || `/?ring=1&caller=${encodeURIComponent(caller)}&msg=${encodeURIComponent(message)}`
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-        list.forEach(c => c.postMessage({ type: 'ring', caller }))
+        list.forEach(c => c.postMessage({ type: 'ring', caller, message }))
         if (list.length === 0) return self.clients.openWindow(ringUrl)
         const existing = list.find(c => c.visibilityState === 'visible') || list[0]
         return existing.focus()
