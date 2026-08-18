@@ -13,11 +13,8 @@ export default function AppLock({ children }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [hasFp, setHasFp]       = useState(false)
-  const autoTriggered = useRef(false)
-
   const unlock = useCallback(() => {
     sessionStorage.setItem('fh_last_active', Date.now().toString())
-    autoTriggered.current = false
     setLocked(false)
     setError('')
     setPassword('')
@@ -30,32 +27,23 @@ export default function AppLock({ children }) {
       setAuthToken(token, u)
       unlock()
     } catch (e) {
-      if (e.name === 'NotAllowedError') {
-        setError('בוטל — נסה שוב')
-      } else {
-        setMethod('password')
-        setError('')
-      }
+      // Any failure — fall back to password silently
+      setMethod('password')
+      setError('')
     } finally { setLoading(false) }
   }, [user?.email, setAuthToken, unlock])
 
-  // Check if fingerprint is enrolled
+  // Check if fingerprint is enrolled on this device
   useEffect(() => {
     if (!user || !isWebAuthnSupported()) { setMethod('password'); return }
     api.get('/api/auth/webauthn/status')
       .then(r => {
         setHasFp(r.data.registered)
-        if (!r.data.registered) setMethod('password')
+        // Default to password — user taps fingerprint button if they want it
+        setMethod('password')
       })
       .catch(() => setMethod('password'))
   }, [user?.id])
-
-  // Auto-trigger fingerprint prompt when lock screen first appears
-  useEffect(() => {
-    if (!locked || !hasFp || method !== 'fingerprint' || autoTriggered.current) return
-    autoTriggered.current = true
-    handleFingerprint()
-  }, [locked, hasFp, method, handleFingerprint])
 
   // Lock on app load if user is already logged in
   useEffect(() => {

@@ -44,7 +44,7 @@ function useRingPhone() {
     return left > 0 ? Math.ceil(left / 1000) : 0
   }, [ringDone])
 
-  return { ring, ringing, canRing, cooldownLeft }
+  return { ring, ringing, ringMsg, canRing, cooldownLeft }
 }
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
@@ -97,7 +97,7 @@ export default function FamilyMap() {
   const [error,       setError]       = useState('')
   const [selected,    setSelected]    = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
-  const { ring, ringing, canRing, cooldownLeft } = useRingPhone()
+  const { ring, ringing, ringMsg, canRing, cooldownLeft } = useRingPhone()
   const [, forceUpdate] = useState(0)
 
   // Tick cooldown display every second
