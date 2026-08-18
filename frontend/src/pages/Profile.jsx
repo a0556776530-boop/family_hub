@@ -281,18 +281,48 @@ export default function Profile() {
   const isChild = user?.role === 'child' || user?.role === 'member'
 
   const [uploading, setUploading] = useState(false)
-  const [sheet, setSheet]         = useState(null) // 'password' | 'name' | 'logout' | 'leave'
+  const [sheet, setSheet]         = useState(null)
   const [showLocationConsent, setShowLocationConsent] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [leaveError, setLeaveError]     = useState('')
   const [fpRegistered, setFpRegistered] = useState(false)
   const [fpLoading, setFpLoading]       = useState(false)
-  const [toast, setToast]               = useState(null) // { msg, type }
+  const [toast, setToast]               = useState(null)
   const [selectedRing, setSelectedRing] = useState(getSelectedRingtone)
   const [previewId, setPreviewId]       = useState(null)
   const previewRef = useRef(null)
+  const [notifPerm, setNotifPerm] = useState(() => ('Notification' in window ? Notification.permission : 'unsupported'))
 
   const showToast = (msg, type = 'success') => setToast({ msg, type })
+
+  const handleEnableNotifications = async () => {
+    if (!('Notification' in window)) return
+    const perm = await Notification.requestPermission()
+    setNotifPerm(perm)
+    if (perm === 'granted') {
+      // Re-run push subscription
+      try {
+        const { data } = await api.get('/api/notifications/vapid-public-key')
+        if (!data.public_key) return
+        const reg = await navigator.serviceWorker.ready
+        const existing = await reg.pushManager.getSubscription()
+        if (existing) await existing.unsubscribe()
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: (() => {
+            const b64 = data.public_key
+            const padding = '='.repeat((4 - b64.length % 4) % 4)
+            const raw = atob((b64 + padding).replace(/-/g, '+').replace(/_/g, '/'))
+            return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+          })(),
+        })
+        await api.post('/api/notifications/subscribe', { subscription: sub.toJSON() })
+        showToast('התראות הופעלו!')
+      } catch { showToast('שגיאה בהפעלת התראות', 'error') }
+    } else {
+      showToast('ההרשאה נדחתה — אפשר לשנות בהגדרות הדפדפן', 'error')
+    }
+  }
 
   const handlePickRingtone = useCallback((id) => {
     setSelectedRingtone(id)
@@ -432,6 +462,21 @@ export default function Profile() {
         {/* Security */}
         <Section title="אבטחה">
           <Row icon="🔑" label="שינוי סיסמה" value="לחץ לעדכון" onClick={() => setSheet('password')} />
+          {'Notification' in window && (
+            <Row icon="🔔" label="התראות Push"
+              value={notifPerm === 'granted' ? '✅ מופעל' : notifPerm === 'denied' ? '❌ חסום בדפדפן' : 'לא מופעל'}
+              rightEl={
+                notifPerm === 'denied'
+                  ? <span className="text-xs text-amber-500 font-semibold px-2">פתח הגדרות דפדפן</span>
+                  : notifPerm !== 'granted'
+                    ? <button onClick={handleEnableNotifications}
+                        className="text-xs font-bold px-3.5 py-1.5 rounded-xl bg-blue-600 text-white active:scale-95 transition-transform">
+                        הפעל
+                      </button>
+                    : null
+              }
+            />
+          )}
           {isWebAuthnSupported() && (
             <Row icon="👆" label="טביעת אצבע / Face ID"
               value={fpRegistered ? '✅ פעיל' : 'לא מוגדר'}
