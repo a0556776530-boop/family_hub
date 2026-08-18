@@ -11,36 +11,36 @@ self.addEventListener('push', event => {
   const data = event.data?.json() || {}
 
   if (data.type === 'ring') {
-    const caller    = data.caller || 'ההורים'
-    const ringUrl   = `/?ring=1&caller=${encodeURIComponent(caller)}`
+    const caller  = data.caller || 'ההורים'
+    const ringUrl = `/?ring=1&caller=${encodeURIComponent(caller)}`
 
-    event.waitUntil(
-      self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-        .then(list => {
-          // Always broadcast to any open tabs first
-          list.forEach(c => c.postMessage({ type: 'ring', caller }))
+    event.waitUntil((async () => {
+      const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
-          // Bring the app to foreground so audio can play immediately
-          const visible = list.find(c => c.visibilityState === 'visible')
-          if (visible) return visible.focus()
-          if (list.length > 0) return list[0].focus()
-          // App is fully closed — open it with ring params so it starts ringing on load
-          return self.clients.openWindow(ringUrl)
-        })
-        .then(() => self.registration.showNotification(
-          `📱 ${caller} מחפשים אותך!`,
-          {
-            body:               'הקש כדי לעצור את הצלצול',
-            icon:               '/icon-192.svg',
-            badge:              '/icon-192.svg',
-            vibrate:            [500,150,500,150,500,150,500,150,500,150,500],
-            requireInteraction: true,
-            tag:                'ring',
-            renotify:           true,
-            data:               { caller, ringUrl },
-          }
-        ))
-    )
+      // Broadcast to all open tabs so the ring alert appears immediately
+      list.forEach(c => c.postMessage({ type: 'ring', caller }))
+
+      // Try to bring app to foreground — wrapped in try/catch so a failure here
+      // never prevents the notification from showing below
+      try {
+        const visible = list.find(c => c.visibilityState === 'visible')
+        if (visible) await visible.focus()
+        else if (list.length > 0) await list[0].focus()
+        else await self.clients.openWindow(ringUrl)
+      } catch {}
+
+      // Always show the notification — this is what rings on a closed/background device
+      await self.registration.showNotification(`📱 ${caller} מחפשים אותך!`, {
+        body:               'הקש כדי לעצור את הצלצול',
+        icon:               '/icon-192.svg',
+        badge:              '/icon-192.svg',
+        vibrate:            [500,150,500,150,500,150,500,150,500,150,500],
+        requireInteraction: true,
+        tag:                'ring',
+        renotify:           true,
+        data:               { caller, ringUrl },
+      })
+    })())
     return
   }
 
