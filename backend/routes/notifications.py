@@ -98,18 +98,21 @@ def ring_phone(target_user_id):
 
     caller_name = caller.get('name', 'ההורים')
 
-    # Store ring session — child polls this to know it should ring
-    mongo.db.ring_sessions.update_one(
-        {'target_user_id': target_user_id},
-        {'$set': {
-            'target_user_id': target_user_id,
-            'caller_name':    caller_name,
-            'family_id':      caller.get('family_id', ''),
-            'active':         True,
-            'started_at':     datetime.datetime.utcnow(),
-        }},
-        upsert=True,
-    )
+    # Store ring session (non-blocking — push must go out regardless)
+    try:
+        mongo.db.ring_sessions.update_one(
+            {'target_user_id': target_user_id},
+            {'$set': {
+                'target_user_id': target_user_id,
+                'caller_name':    caller_name,
+                'family_id':      caller.get('family_id', ''),
+                'active':         True,
+                'started_at':     datetime.datetime.utcnow(),
+            }},
+            upsert=True,
+        )
+    except Exception:
+        pass  # session tracking failed but push must still go out
 
     sent = 0
     if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
@@ -135,10 +138,13 @@ def stop_ring(target_user_id):
         return jsonify({'error': 'forbidden'}), 403
 
     # Mark session as inactive — child's polling will pick this up immediately
-    mongo.db.ring_sessions.update_one(
-        {'target_user_id': target_user_id},
-        {'$set': {'active': False}},
-    )
+    try:
+        mongo.db.ring_sessions.update_one(
+            {'target_user_id': target_user_id},
+            {'$set': {'active': False}},
+        )
+    except Exception:
+        pass
 
     sent = 0
     if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
@@ -152,14 +158,16 @@ def stop_ring(target_user_id):
 @notifications_bp.route('/ring/my-status', methods=['GET'])
 @require_auth
 def ring_my_status():
-    user    = request.current_user
-    user_id = str(user['_id'])
-    session = mongo.db.ring_sessions.find_one({'target_user_id': user_id})
-    if not session or not session.get('active'):
+    try:
+        user    = request.current_user
+        user_id = str(user['_id'])
+        session = mongo.db.ring_sessions.find_one({'target_user_id': user_id})
+        if not session or not session.get('active'):
+            return jsonify({'active': False}), 200
+        age = (datetime.datetime.utcnow() - session.get('started_at', datetime.datetime.min)).total_seconds()
+        if age > 300:
+            mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
+            return jsonify({'active': False}), 200
+        return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
+    except Exception:
         return jsonify({'active': False}), 200
-    # Auto-expire after 5 minutes
-    age = (datetime.datetime.utcnow() - session.get('started_at', datetime.datetime.min)).total_seconds()
-    if age > 300:
-        mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
-        return jsonify({'active': False}), 200
-    return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
