@@ -1,11 +1,12 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { FamilyProvider } from './context/FamilyContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { LocationTrackingProvider } from './context/LocationTrackingContext'
 import { usePushNotifications } from './hooks/usePushNotifications'
 import AppLock from './components/AppLock'
+import RingAlert from './components/RingAlert'
 import api from './api/client'
 
 function useKeepAlive() {
@@ -56,12 +57,27 @@ function Loader() {
   )
 }
 
+function useRingListener() {
+  const [ring, setRing] = useState(null) // { caller: string } | null
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === 'ring') setRing({ caller: e.data.caller || '' })
+    }
+    navigator.serviceWorker?.addEventListener('message', handler)
+    return () => navigator.serviceWorker?.removeEventListener('message', handler)
+  }, [])
+  return [ring, () => setRing(null)]
+}
+
 function AppRoutes() {
   const { user, loading } = useAuth()
+  const [ring, stopRing] = useRingListener()
   usePushNotifications(user)
   useKeepAlive()
   if (loading) return <Loader />
   return (
+    <>
+    {ring && <RingAlert caller={ring.caller} onStop={stopRing} />}
     <Routes>
       <Route path="/splash"       element={<Splash />} />
       <Route path="/login"        element={<AuthRoute><Login /></AuthRoute>} />
@@ -81,6 +97,7 @@ function AppRoutes() {
       <Route path="/forgot-password"  element={<ForgotPassword />} />
       <Route path="*"                 element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
 

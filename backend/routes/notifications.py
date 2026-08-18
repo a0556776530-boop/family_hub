@@ -2,6 +2,7 @@ import os, json
 from flask import Blueprint, request, jsonify
 from app import mongo
 from utils.jwt_utils import require_auth
+from bson import ObjectId
 
 try:
     from pywebpush import webpush, WebPushException
@@ -16,38 +17,31 @@ VAPID_PUBLIC  = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_EMAIL   = 'mailto:admin@familyhub.app'
 
 
+def _send_push(sub, payload):
+    try:
+        webpush(
+            subscription_info=sub['subscription'],
+            data=json.dumps(payload),
+            vapid_private_key=VAPID_PRIVATE,
+            vapid_claims={'sub': VAPID_EMAIL},
+        )
+    except WebPushException as e:
+        if '410' in str(e) or '404' in str(e):
+            mongo.db.push_subscriptions.delete_one({'_id': sub['_id']})
+
+
 def send_push_to_family(family_id, title, body, url='/'):
     if not _PUSH_AVAILABLE or not VAPID_PRIVATE or not VAPID_PUBLIC:
         return
-    subs = list(mongo.db.push_subscriptions.find({'family_id': family_id}))
-    for sub in subs:
-        try:
-            webpush(
-                subscription_info=sub['subscription'],
-                data=json.dumps({'title': title, 'body': body, 'url': url}),
-                vapid_private_key=VAPID_PRIVATE,
-                vapid_claims={'sub': VAPID_EMAIL},
-            )
-        except WebPushException as e:
-            if '410' in str(e) or '404' in str(e):
-                mongo.db.push_subscriptions.delete_one({'_id': sub['_id']})
+    for sub in mongo.db.push_subscriptions.find({'family_id': family_id}):
+        _send_push(sub, {'title': title, 'body': body, 'url': url})
 
 
 def send_push_to_user(user_id, title, body, url='/'):
     if not _PUSH_AVAILABLE or not VAPID_PRIVATE or not VAPID_PUBLIC:
         return
-    subs = list(mongo.db.push_subscriptions.find({'user_id': user_id}))
-    for sub in subs:
-        try:
-            webpush(
-                subscription_info=sub['subscription'],
-                data=json.dumps({'title': title, 'body': body, 'url': url}),
-                vapid_private_key=VAPID_PRIVATE,
-                vapid_claims={'sub': VAPID_EMAIL},
-            )
-        except WebPushException as e:
-            if '410' in str(e) or '404' in str(e):
-                mongo.db.push_subscriptions.delete_one({'_id': sub['_id']})
+    for sub in mongo.db.push_subscriptions.find({'user_id': user_id}):
+        _send_push(sub, {'title': title, 'body': body, 'url': url})
 
 
 @notifications_bp.route('/vapid-public-key', methods=['GET'])
@@ -87,3 +81,24 @@ def unsubscribe():
     else:
         mongo.db.push_subscriptions.delete_many({'user_id': str(user['_id'])})
     return jsonify({'message': 'בוטלו ההתראות'}), 200
+
+
+@notifications_bp.route('/ring/<target_user_id>', methods=['POST'])
+@require_auth
+def ring_phone(target_user_id):
+    caller = request.current_user
+    try:
+        target = mongo.db.users.find_one({'_id': ObjectId(target_user_id)})
+    except Exception:
+        return jsonify({'error': 'invalid_id'}), 400
+    if not target:
+        return jsonify({'error': 'user_not_found'}), 404
+    if target.get('family_id') != caller.get('family_id'):
+        return jsonify({'error': 'forbidden'}), 403
+
+    if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
+        payload = {'type': 'ring', 'caller': caller.get('name', 'ההורים')}
+        for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
+            _send_push(sub, payload)
+
+    return jsonify({'message': 'נשלח'}), 200

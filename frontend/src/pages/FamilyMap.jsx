@@ -6,6 +6,38 @@ import { useAuth } from '../context/AuthContext'
 import { useFamily } from '../context/FamilyContext'
 import api from '../api/client'
 
+const RING_COOLDOWN_MS = 30_000
+
+function useRingPhone() {
+  const [ringing, setRinging]   = useState(null)  // user_id being rung
+  const [ringDone, setRingDone] = useState({})     // { [user_id]: timestamp }
+
+  const ring = useCallback(async (userId) => {
+    setRinging(userId)
+    try {
+      await api.post(`/api/notifications/ring/${userId}`)
+      setRingDone(d => ({ ...d, [userId]: Date.now() }))
+    } catch (e) {
+      console.error('ring failed', e)
+    } finally {
+      setRinging(null)
+    }
+  }, [])
+
+  const canRing = useCallback((userId) => {
+    const last = ringDone[userId] || 0
+    return Date.now() - last > RING_COOLDOWN_MS
+  }, [ringDone])
+
+  const cooldownLeft = useCallback((userId) => {
+    const last = ringDone[userId] || 0
+    const left = RING_COOLDOWN_MS - (Date.now() - last)
+    return left > 0 ? Math.ceil(left / 1000) : 0
+  }, [ringDone])
+
+  return { ring, ringing, canRing, cooldownLeft }
+}
+
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' }
 const DEFAULT_CENTER      = { lat: 32.0853, lng: 34.7818 }
 const MAP_OPTIONS = { streetViewControl: false, mapTypeControl: false, fullscreenControl: false }
@@ -56,6 +88,14 @@ export default function FamilyMap() {
   const [error,       setError]       = useState('')
   const [selected,    setSelected]    = useState(null)
   const [lastRefresh, setLastRefresh] = useState(null)
+  const { ring, ringing, canRing, cooldownLeft } = useRingPhone()
+  const [, forceUpdate] = useState(0)
+
+  // Tick cooldown display every second
+  useEffect(() => {
+    const id = setInterval(() => forceUpdate(n => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -292,17 +332,37 @@ export default function FamilyMap() {
               {selected.accuracy_m != null && (
                 <p className="text-gray-400 text-xs mb-3">דיוק מיקום: ±{Math.round(selected.accuracy_m)} מטר</p>
               )}
-              <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}
-                target="_blank" rel="noreferrer"
-                className="w-full py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                פתח ב-Google Maps לניווט
-              </a>
+              <div className="flex gap-2.5 mb-2">
+                <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}
+                  target="_blank" rel="noreferrer"
+                  className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  ניווט
+                </a>
+                {(() => {
+                  const uid   = selected.user_id
+                  const busy  = ringing === uid
+                  const ok    = canRing(uid)
+                  const secs  = cooldownLeft(uid)
+                  return (
+                    <button
+                      onClick={() => ok && !busy && ring(uid)}
+                      disabled={busy || !ok}
+                      className={`flex-1 py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-all
+                        ${ok && !busy
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}>
+                      <span className="text-base">{busy ? '⏳' : '📳'}</span>
+                      {busy ? 'שולח...' : ok ? 'צלצל' : `${secs}s`}
+                    </button>
+                  )
+                })()}
+              </div>
               <button onClick={() => setSelected(null)}
-                className="w-full mt-2 py-2.5 rounded-2xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-semibold text-sm active:scale-95 transition-transform">
+                className="w-full py-2.5 rounded-2xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-semibold text-sm active:scale-95 transition-transform">
                 סגור
               </button>
             </div>

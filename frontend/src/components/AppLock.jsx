@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../api/client'
 import { isWebAuthnSupported, loginWithFingerprint } from '../utils/webauthn'
@@ -13,10 +13,11 @@ export default function AppLock({ children }) {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
   const [hasFp, setHasFp]       = useState(false)
+  const autoTriggered = useRef(false)
 
   // בדוק אם יש טביעת אצבע רשומה
   useEffect(() => {
-    if (!user || !isWebAuthnSupported()) return
+    if (!user || !isWebAuthnSupported()) { setMethod('password'); return }
     api.get('/api/auth/webauthn/status')
       .then(r => {
         setHasFp(r.data.registered)
@@ -24,6 +25,13 @@ export default function AppLock({ children }) {
       })
       .catch(() => setMethod('password'))
   }, [user?.id])
+
+  // Auto-trigger fingerprint the first time the lock screen appears
+  useEffect(() => {
+    if (!locked || !hasFp || method !== 'fingerprint' || autoTriggered.current) return
+    autoTriggered.current = true
+    handleFingerprint()
+  }, [locked, hasFp, method, handleFingerprint])
 
   // נעל כשהאפליקציה נטענת עם משתמש מחובר
   useEffect(() => {
@@ -64,22 +72,30 @@ export default function AppLock({ children }) {
 
   const unlock = () => {
     sessionStorage.setItem('fh_last_active', Date.now().toString())
+    autoTriggered.current = false
     setLocked(false)
     setError('')
     setPassword('')
   }
 
-  const handleFingerprint = async () => {
+  const handleFingerprint = useCallback(async () => {
     setLoading(true); setError('')
     try {
       const { token, user: u } = await loginWithFingerprint(user.email, api)
       setAuthToken(token, u)
       unlock()
     } catch (e) {
-      if (e.name === 'NotAllowedError') setError('בוטל')
-      else setError('שגיאה בזיהוי, נסה סיסמה')
+      if (e.name === 'NotAllowedError') {
+        // User cancelled the prompt — stay on fingerprint screen
+        setError('בוטל — נסה שוב')
+      } else {
+        // Credential not on this device or any other error — fall back to password
+        setMethod('password')
+        setError('')
+      }
     } finally { setLoading(false) }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email])
 
   const handlePassword = async () => {
     if (!password) return
