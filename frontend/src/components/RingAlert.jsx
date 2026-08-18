@@ -10,10 +10,11 @@ function dismissRingNotification() {
   } catch {}
 }
 
-export default function RingAlert({ caller, message, onStop }) {
+export default function RingAlert({ caller, message: initialMessage, onStop }) {
   const rtRef   = useRef(null)
   const stopRef = useRef(null)  // always points to latest stop function
-  const [pulse, setPulse] = useState(0)
+  const [pulse,          setPulse]          = useState(0)
+  const [displayMessage, setDisplayMessage] = useState(initialMessage || '')
 
   // Keep stopRef current on every render
   stopRef.current = () => {
@@ -43,6 +44,7 @@ export default function RingAlert({ caller, message, onStop }) {
       try {
         const res = await api.get('/api/notifications/ring/my-status')
         if (res.data.active === false) stopRef.current?.()
+        else if (res.data.message) setDisplayMessage(m => m || res.data.message)
       } catch {}
     }
     doPoll()  // immediate — don't wait 1s before first check
@@ -87,11 +89,11 @@ export default function RingAlert({ caller, message, onStop }) {
       <p className="relative z-10 text-blue-200 text-base mb-1 font-medium">מחפשים אותך!</p>
       <p className="relative z-10 text-white text-2xl font-extrabold mb-5">{caller || 'ההורים'}</p>
 
-      {message ? (
+      {displayMessage ? (
         <div className="relative z-10 mx-8 mb-8 px-5 py-3.5 rounded-2xl bg-white/15 border border-white/25 backdrop-blur-sm"
           style={{ animation: 'fadeSlideUp 0.4s ease' }}>
           <p className="text-blue-200 text-xs mb-1 font-semibold tracking-wide">הודעה מההורים</p>
-          <p className="text-white text-base font-bold leading-snug" dir="rtl">{message}</p>
+          <p className="text-white text-base font-bold leading-snug" dir="rtl">{displayMessage}</p>
         </div>
       ) : (
         <div className="mb-8" />

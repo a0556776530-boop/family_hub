@@ -111,7 +111,7 @@ def ring_my_status():
         if age > 300:
             mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
             return jsonify({'active': False}), 200
-        return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
+        return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים'), 'message': session.get('message', '')}), 200
     except Exception:
         return jsonify({'active': False}), 200
 
