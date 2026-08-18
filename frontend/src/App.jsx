@@ -63,6 +63,14 @@ function useRingListener() {
     const p = new URLSearchParams(window.location.search)
     if (p.get('ring') === '1') {
       window.history.replaceState({}, '', window.location.pathname)
+      // Unlock AudioContext NOW while the notification-tap gesture is still active.
+      // This runs synchronously before React renders, giving us the best chance
+      // to resume audio without needing another user tap.
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)()
+        ctx.resume().catch(() => {})
+        window.__ringAudioCtx = ctx
+      } catch {}
       return { caller: p.get('caller') || 'ההורים' }
     }
     return null

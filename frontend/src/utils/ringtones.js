@@ -21,7 +21,15 @@ export function setSelectedRingtone(id) {
 // loops > 0  → fixed number of repetitions
 export function playRingtone(id, loops = 6) {
   try {
-    const ctx = new AudioContext()
+    // Reuse the context unlocked during notification-tap open (window.__ringAudioCtx),
+    // so audio plays immediately without needing another gesture on mobile.
+    let ctx
+    if (window.__ringAudioCtx && window.__ringAudioCtx.state !== 'closed') {
+      ctx = window.__ringAudioCtx
+      delete window.__ringAudioCtx
+    } else {
+      ctx = new AudioContext()
+    }
 
     // Ensure context is running; if browser blocks autoplay, start on first touch/click
     function ensureRunning() {
