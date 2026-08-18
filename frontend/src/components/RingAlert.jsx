@@ -1,52 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-
-// Classic dual-tone phone ring using Web Audio API
-function createRingtone() {
-  try {
-    const ctx = new AudioContext()
-    if (ctx.state === 'suspended') ctx.resume()
-
-    // UK-style ring: 400+450 Hz dual-tone, 400ms on / 200ms off / 400ms on / 2s off
-    const schedule = []
-    const RING_PAIR  = [{ on: 0.40, off: 0.20 }, { on: 0.40, off: 2.00 }]
-    const LOOPS      = 8
-    let   t          = ctx.currentTime + 0.05
-
-    for (let i = 0; i < LOOPS; i++) {
-      for (const { on, off } of RING_PAIR) {
-        schedule.push({ start: t, end: t + on })
-        t += on + off
-      }
-    }
-
-    const nodes = []
-    for (const { start, end } of schedule) {
-      const gain = ctx.createGain()
-      gain.connect(ctx.destination)
-      gain.gain.setValueAtTime(0, start)
-      gain.gain.linearRampToValueAtTime(0.45, start + 0.01)
-      gain.gain.setValueAtTime(0.45, end - 0.02)
-      gain.gain.linearRampToValueAtTime(0, end)
-
-      for (const freq of [400, 450]) {
-        const osc = ctx.createOscillator()
-        osc.type = 'sine'
-        osc.frequency.value = freq
-        osc.connect(gain)
-        osc.start(start)
-        osc.stop(end)
-        nodes.push(osc)
-      }
-    }
-
-    return {
-      duration: t - ctx.currentTime,
-      stop: () => { try { nodes.forEach(n => { try { n.stop() } catch {} }); ctx.close() } catch {} },
-    }
-  } catch {
-    return { duration: 10, stop: () => {} }
-  }
-}
+import { playRingtone, getSelectedRingtone } from '../utils/ringtones'
 
 // Dismiss any SW notification tagged 'ring'
 function dismissRingNotification() {
@@ -62,7 +15,7 @@ export default function RingAlert({ caller, onStop }) {
   const [pulse, setPulse] = useState(0)
 
   useEffect(() => {
-    rtRef.current = createRingtone()
+    rtRef.current = playRingtone(getSelectedRingtone())
 
     // Haptic feedback on devices that support it
     try { navigator.vibrate?.([500, 200, 500, 200, 500, 200, 500, 200, 500]) } catch {}

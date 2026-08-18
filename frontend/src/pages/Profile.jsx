@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
@@ -7,6 +7,7 @@ import { useFamily } from '../context/FamilyContext'
 import { useLocationTrackingContext } from '../context/LocationTrackingContext'
 import { isWebAuthnSupported, registerFingerprint } from '../utils/webauthn'
 import LocationConsentScreen from '../components/LocationConsentScreen'
+import { RINGTONES, getSelectedRingtone, setSelectedRingtone, playRingtone } from '../utils/ringtones'
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ msg, type, onDone }) {
@@ -287,8 +288,25 @@ export default function Profile() {
   const [fpRegistered, setFpRegistered] = useState(false)
   const [fpLoading, setFpLoading]       = useState(false)
   const [toast, setToast]               = useState(null) // { msg, type }
+  const [selectedRing, setSelectedRing] = useState(getSelectedRingtone)
+  const [previewId, setPreviewId]       = useState(null)
+  const previewRef = useRef(null)
 
   const showToast = (msg, type = 'success') => setToast({ msg, type })
+
+  const handlePickRingtone = useCallback((id) => {
+    setSelectedRingtone(id)
+    setSelectedRing(id)
+    // Stop any current preview and play the new one briefly
+    previewRef.current?.stop()
+    setPreviewId(id)
+    const rt = playRingtone(id, 1) // 1 loop preview
+    previewRef.current = rt
+    setTimeout(() => {
+      rt.stop()
+      setPreviewId(null)
+    }, rt.duration * 1000)
+  }, [])
 
   useEffect(() => {
     if (!isWebAuthnSupported()) return
@@ -445,6 +463,60 @@ export default function Profile() {
             />
           </Section>
         )}
+
+        {/* Ringtone picker */}
+        <Section title="צליל צלצול">
+          <div className="divide-y divide-gray-50 dark:divide-gray-700">
+            {RINGTONES.map((rt, idx) => {
+              const isSelected = selectedRing === rt.id
+              const isPreviewing = previewId === rt.id
+              const isLast = idx === RINGTONES.length - 1
+              return (
+                <div key={rt.id}
+                  className={`flex items-center gap-3 px-4 py-3.5 ${!isLast ? 'border-b border-gray-100 dark:border-gray-700/60' : ''}`}>
+                  {/* Checkmark / radio */}
+                  <button onClick={() => handlePickRingtone(rt.id)}
+                    className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors
+                      ${isSelected ? 'border-blue-600 bg-blue-600' : 'border-gray-300 dark:border-gray-600'}`}>
+                    {isSelected && (
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {/* Labels */}
+                  <button onClick={() => handlePickRingtone(rt.id)} className="flex-1 text-right min-w-0">
+                    <p className={`text-sm font-semibold ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-white'}`}>
+                      {rt.label}
+                    </p>
+                    <p className="text-xs text-gray-400">{rt.desc}</p>
+                  </button>
+
+                  {/* Play preview */}
+                  <button
+                    onClick={() => {
+                      if (isPreviewing) { previewRef.current?.stop(); setPreviewId(null); return }
+                      previewRef.current?.stop()
+                      setPreviewId(rt.id)
+                      const r = playRingtone(rt.id, 1)
+                      previewRef.current = r
+                      setTimeout(() => { r.stop(); setPreviewId(null) }, r.duration * 1000)
+                    }}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors
+                      ${isPreviewing ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                    {isPreviewing
+                      ? <span className="w-2.5 h-2.5 bg-white rounded-sm" />
+                      : <svg className="w-3.5 h-3.5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                    }
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </Section>
 
         {/* Family */}
         {family && (
