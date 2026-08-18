@@ -15,6 +15,7 @@
     "@capacitor/core": "^7.4.4",
     "@capacitor/ios": "^7.4.4",
     "@capacitor/local-notifications": "^7.0.7",
+    "@react-google-maps/api": "^2.20.8",
     "axios": "^1.17.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.6",
