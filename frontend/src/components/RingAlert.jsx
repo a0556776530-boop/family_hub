@@ -37,14 +37,15 @@ export default function RingAlert({ caller, onStop }) {
     // Pulse animation
     const pId = setInterval(() => setPulse(p => p + 1), 800)
 
-    // Poll backend every 2 seconds — stops immediately when sender presses stop,
-    // regardless of whether push subscription is working
-    const pollId = setInterval(async () => {
+    // Poll backend every 1s — stops when sender presses stop, regardless of push
+    const doPoll = async () => {
       try {
         const res = await api.get('/api/notifications/ring/my-status')
         if (res.data.active === false) stopRef.current?.()
       } catch {}
-    }, 2000)
+    }
+    doPoll()  // immediate — don't wait 1s before first check
+    const pollId = setInterval(doPoll, 1000)
 
     return () => {
       clearInterval(pId)

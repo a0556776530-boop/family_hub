@@ -83,6 +83,24 @@ def unsubscribe():
     return jsonify({'message': 'בוטלו ההתראות'}), 200
 
 
+@notifications_bp.route('/ring/my-status', methods=['GET'])
+@require_auth
+def ring_my_status():
+    try:
+        user    = request.current_user
+        user_id = str(user['_id'])
+        session = mongo.db.ring_sessions.find_one({'target_user_id': user_id})
+        if not session or not session.get('active'):
+            return jsonify({'active': False}), 200
+        age = (datetime.datetime.utcnow() - session.get('started_at', datetime.datetime.min)).total_seconds()
+        if age > 300:
+            mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
+            return jsonify({'active': False}), 200
+        return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
+    except Exception:
+        return jsonify({'active': False}), 200
+
+
 @notifications_bp.route('/ring/<target_user_id>', methods=['POST'])
 @require_auth
 def ring_phone(target_user_id):
@@ -137,37 +155,27 @@ def stop_ring(target_user_id):
     if target.get('family_id') != caller.get('family_id'):
         return jsonify({'error': 'forbidden'}), 403
 
-    # Mark session as inactive — child's polling will pick this up immediately
+    # Mark session inactive — critical: if this fails the poll will never detect stop
     try:
-        mongo.db.ring_sessions.update_one(
+        result = mongo.db.ring_sessions.update_one(
             {'target_user_id': target_user_id},
             {'$set': {'active': False}},
         )
     except Exception:
-        pass
+        # DB failed — still attempt push so the child has a chance to stop
+        _try_send_stop_push(target_user_id)
+        return jsonify({'error': 'db_error', 'push_attempted': True}), 500
 
-    sent = 0
-    if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
-        for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
-            _send_push(sub, {'type': 'stop_ring'})
-            sent += 1
+    # Push is secondary — polling covers stop even without it
+    _try_send_stop_push(target_user_id)
 
-    return jsonify({'message': 'עצור', 'sent': sent}), 200
+    return jsonify({'message': 'עצור', 'matched': result.matched_count}), 200
 
 
-@notifications_bp.route('/ring/my-status', methods=['GET'])
-@require_auth
-def ring_my_status():
+def _try_send_stop_push(target_user_id):
     try:
-        user    = request.current_user
-        user_id = str(user['_id'])
-        session = mongo.db.ring_sessions.find_one({'target_user_id': user_id})
-        if not session or not session.get('active'):
-            return jsonify({'active': False}), 200
-        age = (datetime.datetime.utcnow() - session.get('started_at', datetime.datetime.min)).total_seconds()
-        if age > 300:
-            mongo.db.ring_sessions.update_one({'_id': session['_id']}, {'$set': {'active': False}})
-            return jsonify({'active': False}), 200
-        return jsonify({'active': True, 'caller': session.get('caller_name', 'ההורים')}), 200
+        if _PUSH_AVAILABLE and VAPID_PRIVATE and VAPID_PUBLIC:
+            for sub in mongo.db.push_subscriptions.find({'user_id': target_user_id}):
+                _send_push(sub, {'type': 'stop_ring'})
     except Exception:
-        return jsonify({'active': False}), 200
+        pass

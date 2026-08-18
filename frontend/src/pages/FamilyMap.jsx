@@ -39,7 +39,13 @@ function useRingPhone() {
   const stopRing = useCallback(async (userId) => {
     setActiveRing(null)
     setRingDone(d => ({ ...d, [userId]: 0 }))  // reset cooldown so parent can ring again immediately
-    try { await api.post(`/api/notifications/ring/${userId}/stop`) } catch {}
+    const doStop = () => api.post(`/api/notifications/ring/${userId}/stop`)
+    try {
+      await doStop()
+    } catch {
+      // DB might have hiccuped — retry once after 1.5s
+      setTimeout(async () => { try { await doStop() } catch {} }, 1500)
+    }
   }, [])
 
   const canRing = useCallback((userId) => {
