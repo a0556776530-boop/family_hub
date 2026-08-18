@@ -1054,16 +1054,74 @@ def ai_chat_stream():
             not _CONVERSATIONAL_RE.match(message.strip())
         )
 
+        # Detect query type for smarter search targeting
+        _SPORTS_TERMS_RE = re.compile(
+            r'(?:משחק|תוצאה|ניצחון|הפסד|גול|ליגה|מחזור|אליפות|כדורגל|כדורסל|טניס|'
+            r'שחקן|מאמן|קבוצה|ברצלונה|ריאל|מנצ\'סטר|ליברפול|פריז|מ\.ס\.|הפועל|מכבי|'
+            r'בייסבול|NFL|NBA|UEFA|FIFA|Champions|Premier|LaLiga|Serie|Bundesliga)',
+            re.IGNORECASE
+        )
+        _NEWS_TERMS_RE = re.compile(
+            r'(?:חדשות|מה קרה|מה קורה|עדכון|פוליטיקה|כלכלה|מזג אוויר|תאונה|'
+            r'פיגוע|בחירות|ממשלה|כנסת|ביטחון|צבא|צה\"ל)',
+            re.IGNORECASE
+        )
+        _is_sports_query = bool(_SPORTS_TERMS_RE.search(message))
+        _is_news_query   = bool(_NEWS_TERMS_RE.search(message))
+
+        _IL_SPORTS_DOMAINS = [
+            'sport5.co.il', 'one.co.il', 'mako.co.il', 'ynet.co.il',
+            'walla.co.il', 'sport1.co.il', 'globes.co.il',
+        ]
+        _INTL_SPORTS_DOMAINS = [
+            'goal.com', 'bbc.com', 'espn.com', 'skysports.com',
+            'football-italia.net', 'transfermarkt.com', 'sofascore.com',
+            'flashscore.com', 'livescore.com', 'whoscored.com',
+        ]
+        _IL_NEWS_DOMAINS = [
+            'ynet.co.il', 'walla.co.il', 'mako.co.il', 'haaretz.co.il',
+            'maariv.co.il', 'israelhayom.co.il', 'kan.org.il',
+        ]
+
         def _do_tavily_search(query, max_results=5, include_images=True):
             nonlocal already_searched, sources, images_out
             yield ev({'type': 'tool_start', 'name': 'web_search', 'query': query[:80]})
             yield ev({'type': 'status', 'text': f'🔍 מחפש: {query[:50]}...'})
             try:
-                resp = _tavily_client.search(query, max_results=max_results, include_answer=True, include_images=include_images)
+                # Build smart search kwargs based on query type
+                kwargs = {
+                    'max_results':    max_results,
+                    'include_answer': True,
+                    'include_images': include_images,
+                }
+                if _is_sports_query:
+                    kwargs['topic']           = 'news'
+                    kwargs['include_domains'] = _IL_SPORTS_DOMAINS + _INTL_SPORTS_DOMAINS
+                elif _is_news_query:
+                    kwargs['topic']           = 'news'
+                    kwargs['include_domains'] = _IL_NEWS_DOMAINS
+
+                resp = _tavily_client.search(query, **kwargs)
                 results_list = [
                     {'title': r.get('title', ''), 'url': r.get('url', ''), 'content': r.get('content', '')[:400]}
                     for r in resp.get('results', [])[:max_results]
                 ]
+
+                # For sports: if Hebrew search returned no results, retry in English
+                if _is_sports_query and not results_list:
+                    resp2 = _tavily_client.search(
+                        query + ' latest result score 2026',
+                        max_results=max_results,
+                        include_answer=True,
+                        topic='news',
+                        include_domains=_INTL_SPORTS_DOMAINS,
+                    )
+                    results_list = [
+                        {'title': r.get('title', ''), 'url': r.get('url', ''), 'content': r.get('content', '')[:400]}
+                        for r in resp2.get('results', [])[:max_results]
+                    ]
+                    resp = resp2 if results_list else resp
+
                 if include_images:
                     images_out = [img for img in (resp.get('images') or []) if isinstance(img, str)][:4]
                 search_result = {
@@ -1077,7 +1135,7 @@ def ai_chat_stream():
 
                 ctx = (
                     '⚠️ SEARCH RESULTS — cite ONLY these. Do NOT add facts not found here.\n'
-                    'If the specific fact asked is not here → say "לא מצאתי מידע מאומת".\n\n'
+                    'If the specific fact asked is not in these results → say "לא מצאתי מידע מאומת" and give a Google link.\n\n'
                 )
                 if resp.get('answer'):
                     ctx += f'תשובה מסוכמת: {resp["answer"]}\n\n'
