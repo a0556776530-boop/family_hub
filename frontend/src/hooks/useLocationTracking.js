@@ -120,7 +120,7 @@ export function useLocationTracking(user) {
             setStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'error')
             setError(err.message)
           },
-          { enableHighAccuracy: false, maximumAge: 60000, timeout: 20000 }
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
         )
         watcherId.current = id
         setStatus('active')
