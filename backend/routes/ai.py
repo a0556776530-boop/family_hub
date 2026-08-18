@@ -39,18 +39,14 @@ except Exception:
     _GEMINI_KEY2 = ''
 
 # Native Gemini SDK with Google Search grounding (same as Gemini.ai)
-_gemini_native = None
+_gemini_native_available = False
 try:
     import google.generativeai as _genai_sdk
-    if _GEMINI_KEY:
-        _genai_sdk.configure(api_key=_GEMINI_KEY)
-        _gemini_native = _genai_sdk.GenerativeModel(
-            model_name='gemini-2.0-flash',
-            tools='google_search_retrieval',
-        )
+    _gemini_native_available = bool(_GEMINI_KEY)
+    if _gemini_native_available:
+        print('[gemini-native] google-generativeai SDK loaded OK', file=__import__('sys').stderr)
 except Exception as _ge:
-    import sys as _sys2
-    print(f'[gemini-native] not available: {_ge}', file=_sys2.stderr)
+    print(f'[gemini-native] SDK not available: {_ge}', file=__import__('sys').stderr)
 
 # AI is available if at least one model provider is configured
 _AI_AVAILABLE = bool(_GROQ_KEY or _GEMINI_KEY or _GEMINI_KEY2)
@@ -1167,7 +1163,7 @@ def ai_chat_stream():
 
         # ── Path 1: Gemini Native with Google Search grounding ────────────────
         # This is the same technology Gemini.ai uses — real Google Search results
-        if _gemini_native:
+        if _gemini_native_available:
             try:
                 # Build prompt: system + conversation history + user message
                 today_str_g = datetime.now(timezone.utc).strftime('%Y-%m-%d')
@@ -1191,10 +1187,19 @@ def ai_chat_stream():
                 yield ev({'type': 'status', 'text': '🔍 מחפש ב-Google...'})
                 import google.generativeai as _gnai
                 _gnai.configure(api_key=_GEMINI_KEY)
-                _native_model = _gnai.GenerativeModel(
-                    model_name='gemini-2.0-flash',
-                    tools='google_search_retrieval',
-                )
+                # Try Gemini 2.0 tool name first, fall back to 1.5 name
+                for _tool_name, _model_name in [
+                    ('google_search', 'gemini-2.0-flash'),
+                    ('google_search_retrieval', 'gemini-1.5-flash'),
+                ]:
+                    try:
+                        _native_model = _gnai.GenerativeModel(
+                            model_name=_model_name,
+                            tools=_tool_name,
+                        )
+                        break
+                    except Exception:
+                        continue
                 response = _native_model.generate_content(
                     native_prompt,
                     stream=True,
