@@ -58,7 +58,16 @@ function Loader() {
 }
 
 function useRingListener() {
-  const [ring, setRing] = useState(null) // { caller: string } | null
+  // If the app was opened by the SW ring handler, start ringing immediately
+  const [ring, setRing] = useState(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('ring') === '1') {
+      window.history.replaceState({}, '', window.location.pathname)
+      return { caller: p.get('caller') || 'ההורים' }
+    }
+    return null
+  })
+
   useEffect(() => {
     const handler = (e) => {
       if (e.data?.type === 'ring')      setRing({ caller: e.data.caller || '' })

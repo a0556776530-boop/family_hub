@@ -11,19 +11,33 @@ self.addEventListener('push', event => {
   const data = event.data?.json() || {}
 
   if (data.type === 'ring') {
+    const caller    = data.caller || 'ההורים'
+    const ringUrl   = `/?ring=1&caller=${encodeURIComponent(caller)}`
+
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-        .then(list => list.forEach(c => c.postMessage({ type: 'ring', caller: data.caller || '' })))
+        .then(list => {
+          // Always broadcast to any open tabs first
+          list.forEach(c => c.postMessage({ type: 'ring', caller }))
+
+          // Bring the app to foreground so audio can play immediately
+          const visible = list.find(c => c.visibilityState === 'visible')
+          if (visible) return visible.focus()
+          if (list.length > 0) return list[0].focus()
+          // App is fully closed — open it with ring params so it starts ringing on load
+          return self.clients.openWindow(ringUrl)
+        })
         .then(() => self.registration.showNotification(
-          `📱 ${data.caller || 'ההורים'} מחפשים אותך!`,
+          `📱 ${caller} מחפשים אותך!`,
           {
-            body:             'הקש כדי לעצור את הצלצול',
-            icon:             '/icon-192.svg',
-            badge:            '/icon-192.svg',
-            vibrate:          [500,150,500,150,500,150,500,150,500,150,500],
+            body:               'הקש כדי לעצור את הצלצול',
+            icon:               '/icon-192.svg',
+            badge:              '/icon-192.svg',
+            vibrate:            [500,150,500,150,500,150,500,150,500,150,500],
             requireInteraction: true,
-            tag:              'ring',
-            renotify:         true,
+            tag:                'ring',
+            renotify:           true,
+            data:               { caller, ringUrl },
           }
         ))
     )
@@ -57,13 +71,12 @@ self.addEventListener('notificationclick', event => {
   event.notification.close()
 
   if (event.notification.tag === 'ring') {
-    // Broadcast ring to any open clients so they start ringing,
-    // and open the app if it wasn't open
-    const caller = event.notification.body ? '' : ''
+    const caller  = event.notification.data?.caller || ''
+    const ringUrl = event.notification.data?.ringUrl || `/?ring=1&caller=${encodeURIComponent(caller)}`
     event.waitUntil(
       self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
         list.forEach(c => c.postMessage({ type: 'ring', caller }))
-        if (list.length === 0) return self.clients.openWindow('/')
+        if (list.length === 0) return self.clients.openWindow(ringUrl)
         const existing = list.find(c => c.visibilityState === 'visible') || list[0]
         return existing.focus()
       })
