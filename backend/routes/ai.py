@@ -1041,6 +1041,7 @@ def ai_chat_stream():
                             model=model, messages=msgs,
                             temperature=0.7, max_tokens=1024, stream=True,
                         )
+                        got_content = False
                         for chunk in stream:
                             delta = ''
                             try:
@@ -1048,10 +1049,15 @@ def ai_chat_stream():
                             except Exception:
                                 pass
                             if delta:
+                                got_content = True
                                 full_text.append(delta)
                                 yield ev({'type': 'delta', 'text': delta})
-                        streamed[0] = True
-                        return
+                        if got_content:
+                            streamed[0] = True
+                            return
+                        # Empty response from this model — try next
+                        print(f'[stream] {model}: empty response, trying next', file=_sys.stderr)
+                        continue
                     except Exception as me:
                         print(f'[stream] {model}: {me!r}', file=_sys.stderr)
                         continue
