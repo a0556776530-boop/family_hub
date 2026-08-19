@@ -1226,26 +1226,40 @@ def ai_chat_stream():
         images_out    = []
         already_searched = False
 
-        # Never search when the query is answered by local DB data.
+        # ── Search gating: opt-IN only for clearly external-data queries ────
+        # Default is NO search. Only search when the message explicitly signals
+        # a need for real-time / external information.
+
+        # 1. App data → always local, never search
         _is_local_query = bool(
             _TASKS_Q.search(message) or
             _SHOPPING_Q.search(message) or
             _CALENDAR_Q.search(message)
         )
 
-        # Short follow-up / reference questions — answer from conversation history, not web.
-        # Detects pronouns like "הללו", "אלו", "האלה" in short messages.
-        _FOLLOWUP_RE = re.compile(
-            r'(?:הללו|הלל|אלו|אלה|האלה|האלו|אותם|אותן|הנ"ל)',
+        # 2. Explicitly realtime signals → DO search
+        _REALTIME_RE = re.compile(
+            r'(?:'
+            # Sports
+            r'תוצא[הת]|ניצח|הפסיד|גול|מחזור|ליגה|אליפות|'
+            r'כדורגל|כדורסל|טניס|בייסבול|NFL|NBA|UEFA|FIFA|Champions|LaLiga|Premier|Serie|Bundesliga|'
+            r'ברצלונה|ריאל\s+מדריד|מנצ\'סטר|ליברפול|פריז|הפועל|מכבי|'
+            # News / current events
+            r'חדשות|מה\s+קורה|מה\s+קרה|מה\s+חדש|עדכון\s+(?:על|ב)|'
+            r'פוליטיקה|ממשלה|כנסת|ביטחון|צה"ל|פיגוע|בחירות|'
+            # Prices / market
+            r'מחיר|שער|מניה|דולר|אירו|ביטקוין|'
+            # Weather
+            r'מזג\s+אוויר|טמפרטורה|גשם|חום|קור\s+ב'
+            r')',
             re.IGNORECASE
         )
-        _is_followup = len(message) < 55 and bool(_FOLLOWUP_RE.search(message))
+        _needs_realtime = bool(_REALTIME_RE.search(message))
 
         _should_search = (
             _tavily_client and
             not _is_local_query and
-            not _is_followup and
-            len(message) > 12 and
+            _needs_realtime and
             not _CONVERSATIONAL_RE.match(message.strip())
         )
 
