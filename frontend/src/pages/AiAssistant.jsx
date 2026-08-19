@@ -6,111 +6,6 @@ import { useNavigate } from 'react-router-dom'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
 
-// ─── Routing patterns ──────────────────────────────────────────────────────────
-const MODIFY_VERB_RE  = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|שים|תשים|תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|סמן|תסמן|בצע|תבצע|השלם|תשלים|סיימתי|גמרתי)/
-const DESTRUCTIVE_RE  = /(?:מחק|תמחק|נקה|תנקה|הסר|תסיר)\s+(?:הכל|כל\s+ה|את\s+כל|הרשימה\s+כולה|כולם|הכל\s+מה)/i
-const MIXED_INTENT_RE = /(?:תמצא|חפש|מצא)\s+.+?\s+ו(?:תוסיף|הוסף)\s+(?:את\s+)?(?:המצרכים|הרכיבים|המרכיבים|הכל|אותם)/i
-
-// ─── Local intent detection ────────────────────────────────────────────────────
-const ADD_VERBS    = /(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|קחי|שים|תשים)/
-const SHOW_VERBS   = /(?:תראה|הראה|הצג|תציג|תפרט|מה\s+(?:יש|המ)|הצג|מהי|רוצה\s+לראות)/
-const DELETE_VERBS = /(?:תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|הסירי)/
-const DONE_VERBS   = /(?:סיימתי|סמן|תסמן|בוצע|הושלם|השלם|עשיתי|גמרתי|סיים|גמר|ביצעתי|סמני|תסמני)/
-const WANT_ADD     = /(?:אשמח\s+(?:אם\s+)?(?:ש)?(?:ת(?:וסיף|כניס|צור))|רוצה\s+(?:ש)?(?:תוסיף|להוסיף|להכניס|לצור)|אפשר\s+(?:ש)?(?:תוסיף|להוסיף)|(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|בוא\s+(?:ת)?(?:וסיף|כניס|צור)|תוכל(?:י)?\s+(?:ל)?(?:הוסיף|הכניס|צור))/
-const SHOP_CTX     = /(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות)/
-const TASK_CTX     = /(?:משימ[הות]|תזכורת|ל(?:עשות|לעשות)|לרשימת\s+המשימות|למשימות|הרשימה\s+שלי)/
-const NOISE_WORDS  = /(?:אשמח|אודה|תוכל|תוכלי|בבקשה|נא|אם\s+אפשר|אני\s+רוצה|אני|רוצה|אפשר|בוא|יכול|יכולה|שתוסיף|שתכניס|שתצור|שתמחק)\b/gi
-
-function stripNoise(s) {
-  return s
-    .replace(ADD_VERBS, '').replace(DELETE_VERBS, '').replace(DONE_VERBS, '')
-    .replace(NOISE_WORDS, '')
-    .replace(/(?:משימ[הות]|תזכורת|למשימות|לרשימת\s+המשימות)/gi, '')
-    .replace(/(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|בקניות|ברשימ[הת]|לקנות|לחנות)/gi, '')
-    .replace(/(?:^|\s)(?:את|לי|ה|ל|מ|ב|כ|ו|אני|אתה|את|הם|הן|אנחנו|בבקשה|נא|גם|עוד)\s/gi, ' ')
-    .replace(/\s+/g, ' ').trim().replace(/^[,.\-:]+|[,.\-:?!]+$/g, '').trim()
-}
-
-function detectIntent(msg) {
-  const m       = msg.trim()
-  const hasAdd  = ADD_VERBS.test(m) || WANT_ADD.test(m)
-  const hasShow = SHOW_VERBS.test(m) || /^(?:מה|כמה|מי|הצג|רשימ)/.test(m)
-  const hasDel  = DELETE_VERBS.test(m)
-  const hasDone = DONE_VERBS.test(m)
-  const isShop  = SHOP_CTX.test(m)
-  const isTask  = TASK_CTX.test(m)
-
-  if (hasAdd && isTask && !isShop) {
-    let title = m.replace(/^.*?(?:משימ[הות]|תזכורת)\s*/i, '').trim()
-    title = stripNoise(title)
-    if (!title || title.length < 2) title = stripNoise(m)
-    if (title && title.length > 1) return { intent: 'add_task', title }
-  }
-  if (hasAdd && isShop) {
-    let raw = m.replace(/\s*(?:לקני(?:ות|ה|ון)|לרשימ[הת](?:\s+(?:ה)?קניות)?|לסופר|למרכול|למכולת|לפרמסייה|בקניות|ברשימ[הת]|לקנות|לחנות).*/i, '')
-    raw = stripNoise(raw)
-    const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
-    if (items.length) return { intent: 'add_shopping', items }
-  }
-  if (/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!\s*ל(?:עשות|לעשות))/.test(m) && (isShop || !isTask)) {
-    let raw = stripNoise(m.replace(/(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?/i, '').replace(SHOP_CTX, '').trim())
-    const items = raw.split(/\s*[,ו]\s*|\s+ו(?=\S)/).map(s => s.trim()).filter(s => s.length > 1)
-    if (items.length > 0 && items[0].length > 1) return { intent: 'add_shopping', items }
-  }
-  if (isTask && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) return { intent: 'get_tasks' }
-  if (/(?:מה\s+(?:ה)?משימות|משימות\s+פתוחות|כל\s+המשימות)/.test(m)) return { intent: 'get_tasks' }
-  if (isShop && (hasShow || /^(?:מה|הצג|תראה|רשימ)/.test(m))) return { intent: 'get_shopping' }
-  if (/(?:מה\s+(?:יש\s+)?(?:ב)?(?:ה)?קניות|מה\s+(?:יש\s+)?ברשימ)/.test(m)) return { intent: 'get_shopping' }
-  if (hasDel && isTask) { const t = stripNoise(m); if (t && t.length > 1) return { intent: 'delete_task', title: t } }
-  if (hasDone && isTask) { const t = stripNoise(m); if (t && t.length > 1) return { intent: 'complete_task', title: t } }
-  return null
-}
-
-async function executeIntent(intent) {
-  switch (intent.intent) {
-    case 'add_task': {
-      await api.post('/api/tasks/', { title: intent.title, priority: 'medium' })
-      return { reply: `✅ נוצרה משימה: **${intent.title}**`, actions: [{ tool: 'create_task', result: { created: true, title: intent.title } }] }
-    }
-    case 'add_shopping': {
-      const added = []
-      for (const name of intent.items) {
-        try { await api.post('/api/shopping/', { name }); added.push(name) } catch {}
-      }
-      if (!added.length) return null
-      return { reply: `🛒 נוסף לקניות: ${added.join(', ')}`, actions: [{ tool: 'add_shopping_items', result: { added: added.length, items: added } }] }
-    }
-    case 'get_tasks': {
-      const res = await api.get('/api/tasks/')
-      const tasks = res.data?.tasks || []
-      if (!tasks.length) return { reply: 'אין משימות פתוחות כרגע 🎉', actions: [] }
-      const lines = tasks.slice(0, 10).map(t => `• ${t.title}`).join('\n')
-      return { reply: `📋 **משימות פתוחות (${tasks.length}):**\n${lines}`, actions: [] }
-    }
-    case 'get_shopping': {
-      const res = await api.get('/api/shopping/')
-      const items = res.data?.items || []
-      if (!items.length) return { reply: 'רשימת הקניות ריקה 🛒', actions: [] }
-      const lines = items.slice(0, 15).map(i => `${i.done ? '✅' : '•'} ${i.name}`).join('\n')
-      return { reply: `🛒 **רשימת קניות (${items.length} פריטים):**\n${lines}`, actions: [] }
-    }
-    case 'delete_task': {
-      const res = await api.get('/api/tasks/')
-      const match = (res.data?.tasks || []).find(t => t.title.includes(intent.title) || intent.title.includes(t.title))
-      if (!match) return { reply: `לא מצאתי משימה בשם "${intent.title}"`, actions: [] }
-      await api.delete(`/api/tasks/${match._id}`)
-      return { reply: `🗑️ המשימה "${match.title}" נמחקה.`, actions: [{ tool: 'delete_task', result: { deleted: 1, title: match.title } }] }
-    }
-    case 'complete_task': {
-      const res = await api.get('/api/tasks/')
-      const match = (res.data?.tasks || []).find(t => t.title.includes(intent.title) || intent.title.includes(t.title))
-      if (!match) return { reply: `לא מצאתי משימה בשם "${intent.title}"`, actions: [] }
-      await api.patch(`/api/tasks/${match._id}/complete`)
-      return { reply: `🎉 משימה הושלמה: **${match.title}**`, actions: [{ tool: 'complete_task', result: { completed: true, title: match.title } }] }
-    }
-    default: return null
-  }
-}
 
 // ─── Time-aware suggestions ────────────────────────────────────────────────────
 function getSuggestions() {
@@ -617,7 +512,6 @@ export default function AiAssistant() {
   const [loading,        setLoading]        = useState(false)
   const [showHistory,    setShowHistory]    = useState(false)
   const [viewingHist,    setViewingHist]    = useState(null)
-  const [pendingConfirm, setPendingConfirm] = useState(null)
   const [familyInfo,     setFamilyInfo]     = useState(null)
   const [history,        setHistory]        = useState([])
   const [conversationId, setConversationId] = useState(null)
@@ -694,7 +588,7 @@ export default function AiAssistant() {
 
     try {
       const token = localStorage.getItem('fh_token')
-      const res   = await fetch(`${API_BASE}/api/ai/chat/stream`, {
+      const res   = await fetch(`${API_BASE}/api/ai/agent/stream`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body:    JSON.stringify({ message: msg, history: historyForApi, conversation_id: conversationId }),
@@ -719,20 +613,27 @@ export default function AiAssistant() {
 
           switch (ev.type) {
             case 'tool_start': {
-              const startLabels = {
-                web_search:         q => `🔍 מחפש: ${q || ''}`,
-                add_shopping_items: () => '🛒 מוסיף לקניות...',
-                create_event:       () => '📅 יוצר אירוע...',
-                create_task:        () => '✅ יוצר משימה...',
+              const toolLabels = {
+                web_search:               `🔍 מחפש: ${ev.params_preview || ''}`,
+                add_shopping_items:       '🛒 מוסיף לקניות...',
+                create_event:             '📅 יוצר אירוע...',
+                create_task:              '✅ יוצר משימה...',
+                complete_task:            '✅ מסמן משימה...',
+                delete_task:              '🗑️ מוחק משימה...',
+                delete_event:             '🗑️ מוחק אירוע...',
+                get_tasks:                '📋 טוען משימות...',
+                get_shopping_list:        '🛒 טוען קניות...',
+                get_upcoming_events:      '📅 טוען יומן...',
+                send_push_notification:   '🔔 שולח התראה...',
               }
-              upd(m => ({ ...m, status: startLabels[ev.name]?.(ev.query) || `⚙️ ${ev.name}...` }))
+              upd(m => ({ ...m, status: toolLabels[ev.name] || `⚙️ ${ev.name}...` }))
               break
             }
             case 'status':
               upd(m => ({ ...m, status: ev.text }))
               break
             case 'tool_done':
-              if (ev.name === 'web_search')
+              if (ev.name === 'web_search') {
                 upd(m => ({
                   ...m,
                   sources: ev.result?.results || [],
@@ -740,6 +641,15 @@ export default function AiAssistant() {
                   actions: [...m.actions, { tool: 'web_search', result: ev.result }],
                   status:  `נמצאו ${ev.result?.results?.length || 0} מקורות`,
                 }))
+              } else if (ev.success && ev.result) {
+                upd(m => ({
+                  ...m,
+                  actions: [...m.actions, { tool: ev.name, result: ev.result }],
+                  status:  null,
+                }))
+              } else {
+                upd(m => ({ ...m, status: null }))
+              }
               break
             case 'delta':
               upd(m => ({ ...m, content: m.content + ev.text, status: null }))
@@ -765,6 +675,11 @@ export default function AiAssistant() {
               api.get('/api/ai/conversations').then(r => setHistory(r.data?.conversations || [])).catch(() => {})
               break
             }
+            case 'ask_user':
+              upd(m => ({ ...m, content: ev.question || ev.text || '?', streaming: false, status: null }))
+              setLoading(false)
+              setTimeout(() => inputRef.current?.focus(), 100)
+              return
             case 'error':
               upd(m => ({ ...m, content: ev.message || 'שגיאה', streaming: false, status: null, error: true }))
               break
@@ -802,14 +717,10 @@ export default function AiAssistant() {
   }, [])
 
   // ── Main send ─────────────────────────────────────────────────────────────────
-  const send = useCallback(async (text, skipConfirm = false) => {
+  const send = useCallback(async (text) => {
     if (viewingHist) return
     const msg = (text ?? input).trim()
     if (!msg || loading) return
-
-    if (!skipConfirm && DESTRUCTIVE_RE.test(msg)) {
-      setPendingConfirm({ msg, label: msg }); return
-    }
 
     try { navigator.vibrate?.([10]) } catch {}
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
@@ -831,32 +742,7 @@ export default function AiAssistant() {
       .map(m => ({ role: m.role, content: m.content }))
 
     try {
-      // 1. Local instant path
-      const intent = detectIntent(msg)
-      if (intent) {
-        const result = await executeIntent(intent)
-        if (result) { addAssistantMsg(result); return }
-      }
-
-      // 2. Mixed intent
-      if (MIXED_INTENT_RE.test(msg)) {
-        const searchOnly = msg.replace(/\s*ו(?:תוסיף|הוסף)\s+(?:את\s+)?(?:המצרכים|הרכיבים|המרכיבים|הכל|אותם)\s*(?:לקניות|לרשימה)?/i, '').trim()
-        await sendStreaming(searchOnly, historyForApi)
-        return
-      }
-
-      // 3. Modify verbs → non-streaming full tool-use
-      if (MODIFY_VERB_RE.test(msg)) {
-        const res = await api.post('/api/ai/chat', { message: msg, history: historyForApi, conversation_id: conversationId })
-        if (res.data.conversation_id) setConversationId(res.data.conversation_id)
-        addAssistantMsg({ content: res.data.reply, actions: res.data.actions || [] })
-        api.get('/api/ai/conversations').then(r => setHistory(r.data?.conversations || [])).catch(() => {})
-        return
-      }
-
-      // 4. Knowledge/search → streaming
       await sendStreaming(msg, historyForApi)
-
     } catch (err) {
       if (err?.name === 'AbortError') return
       addAssistantMsg({ content: err?.response?.data?.message || 'משהו השתבש — לחץ "נסה שוב"', error: true })
@@ -864,10 +750,10 @@ export default function AiAssistant() {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }, [viewingHist, input, loading, messages, conversationId, sendStreaming, addAssistantMsg])
+  }, [viewingHist, input, loading, messages, sendStreaming, addAssistantMsg])
 
   const retry = useCallback(() => {
-    if (lastMsgRef.current) send(lastMsgRef.current, true)
+    if (lastMsgRef.current) send(lastMsgRef.current)
   }, [send])
 
   const resetChat = () => {
@@ -907,14 +793,6 @@ export default function AiAssistant() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(175deg,#0c1445 0%,#1a2f7a 35%,#1d4ed8 75%,#2563eb 100%)' }}>
-
-      {pendingConfirm && (
-        <ConfirmDialog
-          message={`האם אתה בטוח שאתה רוצה לבצע: "${pendingConfirm.label}"?`}
-          onConfirm={() => { const m = pendingConfirm.msg; setPendingConfirm(null); send(m, true) }}
-          onCancel={() => setPendingConfirm(null)}
-        />
-      )}
 
       {showHistory && (
         <HistoryPanel

@@ -113,23 +113,22 @@ def _save_conversation(family_id, user_id, conversation_id, user_msg, assistant_
     except Exception:
         return None
 
-MODEL_PRIMARY  = 'openai/gpt-oss-120b'
-MODEL_FALLBACK = 'qwen/qwen3.6-27b'
-MODEL_BASIC    = 'groq/compound'
-MODEL_EXTRA1   = 'openai/gpt-oss-20b'
-MODEL_EXTRA2   = 'compound-beta'
+MODEL_PRIMARY  = 'llama-3.3-70b-versatile'
+MODEL_FALLBACK = 'llama-3.1-70b-versatile'
+MODEL_BASIC    = 'compound-beta'
+MODEL_EXTRA1   = 'llama3-8b-8192'
+MODEL_EXTRA2   = 'compound-beta-mini'
 MODEL = MODEL_PRIMARY
 VALID_CATEGORIES = {'ירקות', 'פירות', 'מזון', 'ניקיון', 'פארם', 'תינוקות', 'אחר'}
 VALID_TASK_CATS  = {'ניקיון', 'מטבח', 'לימודים', 'סידורים', 'קניות', 'תחזוקת הבית', 'אחר'}
 
-# Gemini model list — ordered by preference (newest first)
+# Gemini model list — real models only, ordered by preference
 GEMINI_MODELS = [
-    'gemini-3.5-flash',
     'gemini-2.5-flash',
-    'gemini-3.1-flash-preview',
     'gemini-2.5-pro',
-    'gemini-3.1-flash-lite',
     'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
 ]
 
 # Short conversational phrases that don't need web search
@@ -899,6 +898,7 @@ _ACTION_RE = re.compile(
 # ─── Diagnostics endpoint ────────────────────────────────────────────────────
 
 @ai_bp.route('/diagnose', methods=['GET'])
+@require_auth
 def ai_diagnose():
     """Test each AI provider and return status — no auth needed for debugging."""
     import sys
@@ -1286,7 +1286,7 @@ def ai_chat_stream():
             if _json_leak:
                 print(f'[stream] JSON leak detected, retrying without tool context', file=_sys.stderr)
                 # Strip any prior search context and retry with explicit "answer only" instruction
-                msgs_clean = [m for m in msgs if not (m.get('role') == 'user' and m.get('content', '').startswith('[תוצאות'))]
+                msgs_clean = [m for m in msgs if not (m.get('role') == 'user' and m.get('content', '').startswith('[⚠️'))]
                 msgs_clean.append({'role': 'user', 'content': f'ענה בעברית רגילה (ללא JSON): {message}'})
                 full_text.clear()
                 streamed[0] = False
@@ -1326,6 +1326,59 @@ def ai_chat_stream():
             })
         else:
             yield ev({'type': 'error', 'message': 'הגענו לגבול השימוש — נסה שוב מחר 🌅'})
+
+    return Response(
+        stream_with_context(generate()),
+        content_type='text/event-stream',
+        headers={
+            'Cache-Control':     'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Connection':        'keep-alive',
+        },
+    )
+
+
+# ─── Agent streaming endpoint (new architecture) ────────────────────────────
+
+@ai_bp.route('/agent/stream', methods=['POST'])
+@require_auth
+def agent_stream():
+    """
+    The new Agent endpoint.
+    Replaces /chat/stream once fully validated.
+    """
+    import json as _json
+
+    def _instant_err(msg):
+        def _g():
+            yield f'data: {_json.dumps({"type": "error", "message": msg}, ensure_ascii=False)}\n\n'
+        return Response(stream_with_context(_g()), content_type='text/event-stream',
+                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+    if not _AI_AVAILABLE:
+        return _instant_err('AI לא זמין — יש להגדיר מפתח API')
+
+    user = request.current_user
+    if not user.get('family_id'):
+        return _instant_err('no family')
+
+    if not _check_rate(str(user.get('family_id', ''))):
+        return _instant_err('הגעת למגבלת הבקשות — נסה שוב עוד כמה שניות ⏳')
+
+    body            = request.get_json() or {}
+    message         = (body.get('message') or '').strip()
+    history         = body.get('history') or []
+    conversation_id = body.get('conversation_id')
+
+    def generate():
+        try:
+            from agent.core import get_agent
+            agent = get_agent()
+            yield from agent.run(message, user, conversation_id, history)
+        except Exception as exc:
+            import sys
+            print(f'[agent/stream] uncaught: {exc!r}', file=sys.stderr)
+            yield f'data: {_json.dumps({"type": "error", "message": "שגיאה פנימית — נסה שוב"}, ensure_ascii=False)}\n\n'
 
     return Response(
         stream_with_context(generate()),
