@@ -320,7 +320,7 @@ function Message({ msg, onQuickAction, onRetry, onUndo, conversationId }) {
   return (
     <div className="px-4 py-1.5 group" dir="rtl">
       <div className="flex gap-2.5 items-start">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400/60 to-indigo-600/60 border border-white/20 flex items-center justify-center text-[17px] shrink-0 shadow mt-0.5">🤖</div>
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-amber-300/80 to-orange-200/70 border border-white/25 flex items-center justify-center text-[19px] shrink-0 shadow-md mt-0.5">🐻</div>
         <div className="flex-1 min-w-0">
 
           {msg.status && (
