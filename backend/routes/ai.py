@@ -902,22 +902,59 @@ def _classify_and_execute(message, user):
             return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
 
     elif intent == 'get_tasks':
-        result = execute_tool('get_tasks', {}, user)
-        tasks = result.get('tasks', [])
-        if not tasks:
-            return 'אין משימות פתוחות כרגע 🎉', []
-        lines = '\n'.join(f'• {t["title"]}' for t in tasks[:10])
-        return f'📋 **משימות פתוחות ({len(tasks)}):**\n{lines}', []
+        return _fmt_tasks(user)
 
     elif intent == 'get_shopping':
-        result = execute_tool('get_shopping_list', {}, user)
-        items = result.get('items', [])
-        if not items:
-            return 'רשימת הקניות ריקה 🛒', []
-        lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
-        return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
+        return _fmt_shopping(user)
 
     return None, None
+
+
+# ─── Shared formatters (used by keyword parser + LLM classifier) ─────────────
+
+def _fmt_tasks(user):
+    result = execute_tool('get_tasks', {}, user)
+    tasks  = result.get('tasks', [])
+    if not tasks:
+        return 'אין משימות פתוחות כרגע 🎉', []
+
+    def _sort_key(t):
+        prio = {'high': 0, 'medium': 1, 'low': 2}.get(t.get('priority', 'medium'), 1)
+        return (prio, t.get('due_date') or '9999-12-31')
+
+    now_date = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    lines = []
+    for t in sorted(tasks, key=_sort_key)[:15]:
+        icon = '🔴' if t.get('priority') == 'high' else '🟡' if t.get('priority') == 'medium' else '🟢'
+        line = f'{icon} **{t["title"]}**'
+        due  = t.get('due_date', '')
+        if due:
+            line += f' — {"⚠️ " if due < now_date else ""}עד {due}'
+        if t.get('category') and t['category'] not in ('אחר', ''):
+            line += f' _{t["category"]}_'
+        lines.append(line)
+
+    total   = len(tasks)
+    header  = f'**המשימות שלך ({total})** 📋\n' if total <= 15 else f'**המשימות שלך — {total} סה"כ, מציג 15** 📋\n'
+    return header + '\n'.join(lines), []
+
+
+def _fmt_shopping(user):
+    result  = execute_tool('get_shopping_list', {}, user)
+    items   = result.get('items', [])
+    pending = [i for i in items if not i.get('done')]
+    done    = [i for i in items if i.get('done')]
+    if not items:
+        return 'רשימת הקניות ריקה 🛒', []
+
+    lines = []
+    for i in pending[:20]:
+        qty  = f' × {i["quantity"]}' if i.get('quantity') and i['quantity'] != 1 else ''
+        lines.append(f'• {i["name"]}{qty}')
+    if done:
+        lines.append(f'\n✅ _כבר נקנו: {", ".join(i["name"] for i in done[:5])}_')
+
+    return f'**רשימת הקניות ({len(pending)} פריטים)** 🛒\n' + '\n'.join(lines), []
 
 
 # ─── Fast regex parser (zero LLM calls — instant response) ───────────────────
@@ -949,23 +986,28 @@ def _keyword_parse_basic(message, user):
             if result.get('created'):
                 return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
 
-    # ── Show tasks: "מה המשימות / תראה משימות" ───────────────────────────
-    if re.search(r'(?:מה|תראה|הצג|תציג)\s+(?:ה)?משימות|(?:אילו|יש)\s+משימות', msg, re.IGNORECASE):
-        result = execute_tool('get_tasks', {}, user)
-        tasks  = result.get('tasks', [])
-        if not tasks:
-            return 'אין משימות פתוחות כרגע 🎉', []
-        lines = '\n'.join(f'• {t["title"]}' for t in tasks[:10])
-        return f'📋 **משימות פתוחות ({len(tasks)}):**\n{lines}', []
+    # ── Show tasks ────────────────────────────────────────────────────────
+    _SHOW_TASKS_RE = re.compile(
+        r'(?:מה|תראה|הצג|תציג|אילו|איזה|כמה|אלו|תגיד\s+לי|יש)\s+'
+        r'(?:ה)?(?:משימות|משימה)|'
+        r'(?:אילו|איזה)\s+משימות|'
+        r'משימות\s+(?:שיש|פתוחות|שלי|שלנו)|'
+        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימות',
+        re.IGNORECASE
+    )
+    if _SHOW_TASKS_RE.search(msg):
+        return _fmt_tasks(user)
 
-    # ── Show shopping: "מה יש בקניות / תראה רשימה" ──────────────────────
-    if re.search(r'(?:מה|תראה|הצג|תציג)\s+(?:יש\s+)?(?:ב)?(?:קניות|רשימ(?:ה|ת))|רשימת\s+קניות', msg, re.IGNORECASE):
-        result = execute_tool('get_shopping_list', {}, user)
-        items  = result.get('items', [])
-        if not items:
-            return 'רשימת הקניות ריקה 🛒', []
-        lines = '\n'.join(f'{"✅" if i["done"] else "•"} {i["name"]}' for i in items[:15])
-        return f'🛒 **רשימת קניות ({len(items)} פריטים):**\n{lines}', []
+    # ── Show shopping ─────────────────────────────────────────────────────
+    _SHOW_SHOPPING_RE = re.compile(
+        r'(?:מה|תראה|הצג|תציג|אילו|איזה|יש)\s+(?:יש\s+)?(?:ב)?(?:קניות|רשימ(?:ה|ת))|'
+        r'רשימת\s+קניות|'
+        r'מה\s+(?:אני\s+)?(?:צריך|צריכה)\s+(?:לקנות|לקנייה)|'
+        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:רשימה|קניות)',
+        re.IGNORECASE
+    )
+    if _SHOW_SHOPPING_RE.search(msg):
+        return _fmt_shopping(user)
 
     # ── Show calendar/events: "מה יש השבוע/היום ביומן/לוח שנה/אירועים" ─
     _CALENDAR_QUERY_RE = re.compile(
