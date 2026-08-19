@@ -314,6 +314,7 @@ export default function FamilyMap() {
                 <h3 className="font-bold text-gray-800 dark:text-white text-sm">
                   {located.length > 0 ? `${located.length} מתוך ${children.length} ילדים משתפים מיקום` : 'אף ילד לא משתף מיקום כרגע'}
                 </h3>
+                <p className="text-gray-400 dark:text-gray-500 text-[11px] mt-0.5">המיקום מתעדכן רק כשהאפליקציה פתוחה אצל הילד</p>
               </div>
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
                 {located.map((child, idx) => {
@@ -408,6 +409,16 @@ export default function FamilyMap() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 tabular-nums">{60 - ringText.length}</span>
                 )}
               </div>
+
+              {/* Request fresh location when stale */}
+              {staleness(selected.updated_at) !== 'fresh' && (
+                <button
+                  onClick={() => ring(selected.user_id, '📍 ההורים מבקשים לדעת איפה אתה — פתח את האפליקציה')}
+                  disabled={ringing === selected.user_id || !canRing(selected.user_id)}
+                  className="w-full py-2.5 rounded-2xl bg-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform mb-2 disabled:opacity-50">
+                  <span className="text-base">📍</span> בקש מיקום עדכני
+                </button>
+              )}
 
               <div className="flex gap-2.5 mb-2">
                 <a href={`https://www.google.com/maps/search/?api=1&query=${selected.lat},${selected.lng}`}
