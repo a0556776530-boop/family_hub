@@ -35,15 +35,13 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_URL: https://family-hub-app.onrender.com
-          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY || 'placeholder' }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: npm run build
 
-      # The APK loads the live site from server.url — no need to bundle assets.
-      # Setting CAPACITOR_LIVE_URL injects server.url into capacitor.config.ts.
+      # Bundle web assets into the APK so the Capacitor native bridge initialises
+      # reliably without depending on remote-URL injection tricks.
       - name: Sync Capacitor → Android
         working-directory: frontend
-        env:
-          CAPACITOR_LIVE_URL: https://family-hub-app.onrender.com
         run: npx cap sync android
 
       - name: Make gradlew executable
