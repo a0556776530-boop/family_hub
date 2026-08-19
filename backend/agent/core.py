@@ -165,9 +165,19 @@ class AgentCore:
 
         final_reply = ''.join(full_text).strip()
         if not final_reply:
-            yield ev({'type': 'error', 'message': 'קיבלתי תשובה ריקה — נסה שוב 🔄'})
-            trace.save_async()
-            return
+            if context.search_results:
+                # LLM failed but we have results — build basic reply from them
+                lines = [f'מצאתי {len(context.search_results)} תוצאות:\n']
+                for r in context.search_results[:4]:
+                    title   = r.get('title', '')
+                    content = r.get('content', '')[:200]
+                    url     = r.get('url', '')
+                    lines.append(f'**{title}**\n{content}\n[קישור]({url})\n')
+                final_reply = '\n'.join(lines)
+            else:
+                yield ev({'type': 'error', 'message': 'לא הצלחתי לנסח תשובה — נסה שוב 🔄'})
+                trace.save_async()
+                return
 
         # ── 6. MEMORY ─────────────────────────────────────────────────────
         cid = self.memory.save(conversation_id, message, context, user, final_reply, all_actions)
@@ -361,7 +371,7 @@ class AgentCore:
         gem_key2 = os.environ.get('GEMINI_API_KEY_2', '')
         groq_key = os.environ.get('GROQ_API_KEY', '')
         gem_base = 'https://generativelanguage.googleapis.com/v1beta/openai/'
-        gem_models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        gem_models = ['gemini-2.0-flash', 'gemini-1.5-flash']
         groq_models = [GROQ_FAST, GROQ_FALLBACK, 'compound-beta']
 
         if gem_key:
@@ -384,7 +394,7 @@ class AgentCore:
             try:
                 stream = client.chat.completions.create(
                     model=model, messages=msgs,
-                    temperature=0.7, max_tokens=1024, stream=True,
+                    temperature=0.7, max_tokens=2048, stream=True,
                 )
                 got = False
                 for chunk in stream:
