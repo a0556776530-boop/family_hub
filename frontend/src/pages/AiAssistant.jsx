@@ -85,15 +85,15 @@ function SourceCard({ source }) {
   const domain = (() => { try { return new URL(source.url).hostname.replace('www.', '') } catch { return '' } })()
   return (
     <a href={source.url} target="_blank" rel="noopener noreferrer"
-       className="flex flex-col gap-1 p-2.5 rounded-xl bg-white/6 border border-white/10 hover:bg-white/12 hover:border-white/18 transition-all group active:scale-[0.98]">
-      <div className="flex items-start gap-2">
-        <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=16`}
-             className="w-4 h-4 rounded shrink-0 mt-0.5 opacity-75"
-             onError={e => { e.target.style.display = 'none' }} alt="" />
-        <p className="text-white text-[11.5px] font-medium leading-snug line-clamp-2 flex-1">{source.title}</p>
+       className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/8 border border-white/14 hover:bg-white/14 hover:border-white/24 transition-all active:scale-[0.97] group">
+      <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+           className="w-5 h-5 rounded shrink-0 opacity-80"
+           onError={e => { e.target.style.display = 'none' }} alt="" />
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-[13px] font-semibold leading-tight truncate">{source.title || domain}</p>
+        <p className="text-blue-300/60 text-[11px] mt-0.5">{domain}</p>
       </div>
-      {source.content && <p className="text-blue-300/70 text-[10.5px] leading-snug line-clamp-2 pr-6">{source.content}</p>}
-      <p className="text-blue-400/50 text-[10px] pr-6 group-hover:text-blue-300/60 transition-colors">{domain} ↗</p>
+      <span className="text-blue-300/50 text-[18px] group-hover:text-blue-300/80 transition-colors shrink-0">↗</span>
     </a>
   )
 }
@@ -369,11 +369,11 @@ function Message({ msg, onQuickAction, onRetry, onUndo, conversationId }) {
           ))}
 
           {!msg.streaming && msg.sources?.length > 0 && (
-            <div className="mt-2.5">
-              <p className="text-blue-300/50 text-[10px] mb-1.5 font-medium tracking-wider uppercase">מקורות</p>
-              <div className="grid gap-1.5">
-                {msg.sources.slice(0, 4).map((s, i) => <SourceCard key={i} source={s} />)}
-              </div>
+            <div className="mt-3">
+              <SourceCard source={msg.sources[0]} />
+              {msg.sources.length > 1 && (
+                <p className="text-white/25 text-[10px] text-center mt-1.5">+ {msg.sources.length - 1} מקורות נוספים</p>
+              )}
             </div>
           )}
 
