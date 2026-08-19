@@ -188,6 +188,104 @@ def _get_family_context(user):
     except Exception:
         return ''
 
+
+_TASKS_Q    = re.compile(r'משימ|לעשות|todo|task', re.I)
+_SHOPPING_Q = re.compile(r'קני|שופינג|מרכול|סופר|רשימ.*קני|shopping', re.I)
+_CALENDAR_Q = re.compile(r'יומן|אירוע|לוח|פגיש|calendar|event|השבוע|היום|מחר', re.I)
+
+def _get_detailed_context(user, message: str) -> str:
+    """
+    Smart context injection — detects what the user is asking about
+    and fetches the full relevant data from MongoDB.
+    Always includes the basic family snapshot too.
+    """
+    try:
+        family_id = user.get('family_id', '')
+        if not family_id:
+            return ''
+
+        now       = datetime.now(timezone.utc)
+        today_str = now.strftime('%Y-%m-%d')
+        week_str  = (now + timedelta(days=14)).strftime('%Y-%m-%d')
+        parts     = []
+
+        # ── Members ──────────────────────────────────────────────────────
+        members = list(mongo.db.users.find({'family_id': family_id}, {'name': 1, 'role': 1, '_id': 0}))
+        if members:
+            names = [m.get('name', '').split()[0] for m in members if m.get('name')]
+            parts.append(f'בני המשפחה: {", ".join(names)}')
+
+        # ── Tasks (full list when relevant) ──────────────────────────────
+        if _TASKS_Q.search(message):
+            tasks = list(mongo.db.tasks.find(
+                {'family_id': family_id, 'status': 'pending'},
+                {'title': 1, 'assigned_to': 1, 'priority': 1, 'due_date': 1}
+            ).limit(20))
+            if tasks:
+                lines = ['משימות פתוחות (מה-DB):']
+                for t in tasks:
+                    line = f'  • {t.get("title", "")}'
+                    if t.get('due_date'):
+                        line += f' (עד {t["due_date"]})'
+                    if t.get('priority') == 'high':
+                        line += ' ⚡'
+                    lines.append(line)
+                parts.append('\n'.join(lines))
+            else:
+                parts.append('משימות: אין משימות פתוחות כרגע')
+        else:
+            count = mongo.db.tasks.count_documents({'family_id': family_id, 'status': 'pending'})
+            if count:
+                parts.append(f'משימות פתוחות: {count}')
+
+        # ── Shopping (full list when relevant) ───────────────────────────
+        if _SHOPPING_Q.search(message):
+            items = list(mongo.db.shopping_items.find(
+                {'family_id': family_id, 'done': False},
+                {'name': 1, 'quantity': 1, 'category': 1}
+            ).limit(30))
+            if items:
+                lines = ['רשימת קניות (מה-DB):']
+                for i in items:
+                    line = f'  • {i.get("name", "")}'
+                    if i.get('quantity') and i['quantity'] != 1:
+                        line += f' × {i["quantity"]}'
+                    lines.append(line)
+                parts.append('\n'.join(lines))
+            else:
+                parts.append('קניות: הרשימה ריקה')
+        else:
+            count = mongo.db.shopping_items.count_documents({'family_id': family_id, 'done': False})
+            if count:
+                parts.append(f'פריטים לקנייה: {count}')
+
+        # ── Calendar (always show upcoming, full detail when relevant) ────
+        if _CALENDAR_Q.search(message):
+            events = list(mongo.db.events.find(
+                {'family_id': family_id, 'date': {'$gte': today_str, '$lte': week_str}}
+            ).sort('date', 1).limit(10))
+            if events:
+                lines = ['אירועים קרובים (מה-DB):']
+                for e in events:
+                    line = f'  • {e.get("emoji","📅")} {e.get("title","")}'
+                    line += f' — {e.get("date","")}' + (f' {e["time"]}' if e.get('time') else '')
+                    lines.append(line)
+                parts.append('\n'.join(lines))
+            else:
+                parts.append('יומן: אין אירועים ב-14 הימים הקרובים')
+        else:
+            events = list(mongo.db.events.find(
+                {'family_id': family_id, 'date': {'$gte': today_str, '$lte': week_str}}
+            ).sort('date', 1).limit(3))
+            if events:
+                ev_strs = [f'{e.get("emoji","📅")} {e.get("title","")} ({e.get("date","")})' for e in events]
+                parts.append(f'אירועים קרובים: {" | ".join(ev_strs)}')
+
+        return '\n'.join(parts) if parts else ''
+    except Exception:
+        return _get_family_context(user)  # fallback to basic
+
+
 # ─── Tools ─────────────────────────────────────────────────────────────────
 
 TOOLS = [
@@ -1041,7 +1139,7 @@ def ai_chat_stream():
         # Knowledge path: build message list with family context
         today_str   = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         system_text = SYSTEM_PROMPT.replace('{today}', today_str)
-        fam_ctx     = _get_family_context(user)
+        fam_ctx     = _get_detailed_context(user, message)
         if fam_ctx:
             system_text += f'\n\nהקשר משפחתי (עדכני):\n{fam_ctx}'
         msgs = [{'role': 'system', 'content': system_text}]
