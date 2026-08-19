@@ -170,7 +170,7 @@ class AgentCore:
         yield ev({'type': 'status', 'text': '💬 מנסח תשובה...'})
         full_text: list[str] = []
 
-        yield from self._stream_response(message, context, user, history, full_text)
+        yield from self._stream_response(message, context, user, history, full_text, understanding)
 
         final_reply = ''.join(full_text).strip()
         if not final_reply:
@@ -243,7 +243,8 @@ class AgentCore:
     # ── Response streaming ────────────────────────────────────────────────────
 
     def _stream_response(self, message: str, context: ExecutionContext,
-                         user: dict, history: list, full_text: list):
+                         user: dict, history: list, full_text: list,
+                         understanding: dict | None = None):
         """Yields SSE delta events. Appends all text to full_text."""
 
         today      = datetime.now(timezone.utc).strftime('%Y-%m-%d')
@@ -279,7 +280,8 @@ class AgentCore:
         streamed = [False]
 
         # ── Path 1: Gemini Native with Google Search grounding ────────────
-        if not streamed[0] and context.needs_realtime and self.router._gemini_native_available():
+        needs_realtime = (understanding or {}).get('needs_realtime', True)
+        if not streamed[0] and needs_realtime and self.router._gemini_native_available():
             yield from self._stream_gemini_native(message, user, history, full_text, streamed)
 
         # ── Path 2: OpenAI-compat (Gemini then Groq) ──────────────────────
