@@ -1398,45 +1398,57 @@ def ai_chat_stream():
         full_text = []
         streamed  = [False]
 
-        # ── Path 1: Gemini Native with Google Search grounding ────────────────
-        # Only for explicit web_search intent — prevents Google Search on app queries
-        if _gemini_native_available and ci_intent == 'web_search':
+        # ── Path 1: Gemini Native SDK (most reliable path) ───────────────────────
+        # web_search → with Google Search grounding tool
+        # chat/other → plain generation (no search tool)
+        if _gemini_native_available:
             try:
-                # Build prompt: system + conversation history + user message
                 today_str_g = datetime.now(timezone.utc).strftime('%Y-%m-%d')
                 native_sys  = SYSTEM_PROMPT.replace('{today}', today_str_g)
-                fam_ctx_g   = _get_family_context(user)
-                if fam_ctx_g:
-                    native_sys += f'\n\nהקשר משפחתי:\n{fam_ctx_g}'
+                if ci_intent not in ('web_search', 'chat'):
+                    fam_ctx_g = _get_family_context(user)
+                    if fam_ctx_g:
+                        native_sys += f'\n\nהקשר משפחתי:\n{fam_ctx_g}'
 
-                # Flatten to single prompt with history
+                # Flatten system + history + message into a single prompt string
                 parts = [native_sys + '\n\n']
                 for h in history_raw[-10:]:
-                    role = h.get('role', '')
+                    role    = h.get('role', '')
                     content = h.get('content', '')
                     if role == 'user' and content:
                         parts.append(f'משתמש: {content}\n')
                     elif role == 'assistant' and content:
                         parts.append(f'עוזר: {content}\n')
+
+                # Include any search results that were found via Tavily
+                if already_searched:
+                    parts.append(f'משתמש: [תוצאות חיפוש כבר הוזנו למעלה]\n')
+
                 parts.append(f'משתמש: {message}\nעוזר:')
                 native_prompt = ''.join(parts)
 
-                yield ev({'type': 'status', 'text': '🔍 מחפש ב-Google...'})
                 import google.generativeai as _gnai
                 _gnai.configure(api_key=_GEMINI_KEY)
-                # Try Gemini 2.0 tool name first, fall back to 1.5 name
-                for _tool_name, _model_name in [
-                    ('google_search', 'gemini-2.0-flash'),
-                    ('google_search_retrieval', 'gemini-1.5-flash'),
-                ]:
-                    try:
-                        _native_model = _gnai.GenerativeModel(
-                            model_name=_model_name,
-                            tools=_tool_name,
-                        )
-                        break
-                    except Exception:
-                        continue
+
+                # Use Google Search only for web_search intent
+                _native_model = None
+                if ci_intent == 'web_search':
+                    yield ev({'type': 'status', 'text': '🔍 מחפש ב-Google...'})
+                    for _tool_name, _model_name in [
+                        ('google_search', 'gemini-2.0-flash'),
+                        ('google_search_retrieval', 'gemini-1.5-flash'),
+                    ]:
+                        try:
+                            _native_model = _gnai.GenerativeModel(model_name=_model_name, tools=_tool_name)
+                            break
+                        except Exception:
+                            _native_model = None
+                            continue
+
+                if not _native_model:
+                    # No search tool or not web_search — plain generation
+                    _native_model = _gnai.GenerativeModel(model_name='gemini-2.0-flash')
+
                 response = _native_model.generate_content(
                     native_prompt,
                     stream=True,
@@ -1454,7 +1466,7 @@ def ai_chat_stream():
                         yield ev({'type': 'delta', 'text': delta})
                 if got_native:
                     streamed[0] = True
-                    print('[stream] gemini-native with google-search: OK', file=_sys.stderr)
+                    print(f'[stream] gemini-native ({ci_intent}): OK', file=_sys.stderr)
             except Exception as _ne:
                 print(f'[stream] gemini-native failed: {_ne!r}', file=_sys.stderr)
 
