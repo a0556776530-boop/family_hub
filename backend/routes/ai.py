@@ -1644,10 +1644,8 @@ def ai_chat():
     history         = data.get('history') or []
     conversation_id = data.get('conversation_id')
 
-    # Only allow tools/classifier when message has an explicit action verb.
-    # Questions, complaints, corrections → text-only path (zero Groq tokens).
     frontend_no_tools = data.get('no_tools', False)
-    use_tools = bool(_ACTION_RE.search(message)) and not frontend_no_tools
+    use_tools = not frontend_no_tools
 
     if use_tools:
         # Fast path: pure regex, zero LLM calls — instant for common commands
