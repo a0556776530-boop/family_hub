@@ -251,15 +251,12 @@ class AgentCore:
         has_successes = bool(context.results)
 
         if context.search_results:
-            # Web search succeeded → inject results with strict grounding
-            ctx = (
-                '⚠️ SEARCH RESULTS — cite ONLY these. Do NOT add facts not found here.\n'
-                'If specific fact not in results → say "לא מצאתי מידע מאומת" + Google link.\n\n'
-            )
+            # Web search succeeded → inject results + question in ONE user message
+            ctx = 'תוצאות חיפוש מהאינטרנט:\n\n'
             for i, r in enumerate(context.search_results[:5]):
-                ctx += f'[{i+1}] {r.get("title","")} | {r.get("url","")}\n{r.get("content","")[:300]}\n\n'
-            msgs.append({'role': 'user', 'content': f'[{ctx.strip()}]'})
-            msgs.append({'role': 'user', 'content': message})
+                ctx += f'[{i+1}] {r.get("title","")}\n{r.get("content","")[:300]}\nמקור: {r.get("url","")}\n\n'
+            ctx += f'בהתבסס על התוצאות האלה בלבד, ענה בעברית: {message}'
+            msgs.append({'role': 'user', 'content': ctx})
         elif has_successes:
             # Other tools succeeded (shopping/tasks/calendar) → summarize what happened
             exec_ctx = context.to_response_context()
