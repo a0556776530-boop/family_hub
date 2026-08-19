@@ -1084,12 +1084,14 @@ def _keyword_parse_basic(message, user):
     _SHOW_TASKS_RE = re.compile(
         r'(?:מה|תראה|הצג|תציג|אילו|איזה|כמה|אלו|תגיד\s+לי|יש)\s+(?:ה)?(?:משימות|משימה)|'
         r'(?:אילו|איזה|כמה)\s+משימות|'
-        r'משימות\s+(?:שיש|פתוחות|שלי|שלנו)|'
-        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימות|'
+        r'משימות\s+(?:שיש|פתוחות|שלי|שלנו|מהאפליקציה|שלך)|'
+        r'(?:הראה|תראה|תן|תביא|תספר)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימות|'
         r'(?:יש\s+)?(?:לי|לנו)\s+(?:כאלה\s+)?משימות|'
         r'(?:אין|יש)\s+(?:לי\s+)?משימות|'
         r'(?:בטוח|בטוחה)\s+ש(?:אין|יש)\s+משימות|'
-        r'(?:תפרט|פרט|תציין|ציין|תרשום|רשום)\s+(?:את\s+)?(?:ה)?משימות',
+        r'(?:תפרט|פרט|תציין|ציין|תרשום|רשום)\s+(?:את\s+)?(?:ה)?משימות|'
+        r'(?:מה\s+)?(?:ה)?משימות\s+(?:שלי|שלנו|הפתוחות|הקיימות|האחרונות|היום)|'
+        r'^משימות$',
         re.IGNORECASE
     )
     if _SHOW_TASKS_RE.search(msg):
@@ -1100,7 +1102,9 @@ def _keyword_parse_basic(message, user):
         r'(?:מה|תראה|הצג|תציג|אילו|איזה|יש)\s+(?:יש\s+)?(?:ב)?(?:קניות|רשימ(?:ה|ת))|'
         r'רשימת\s+קניות|'
         r'מה\s+(?:אני\s+)?(?:צריך|צריכה)\s+(?:לקנות|לקנייה)|'
-        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:רשימה|קניות)',
+        r'(?:הראה|תראה|תן|תביא)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:רשימה|קניות)|'
+        r'(?:מה\s+)?(?:ה)?קניות\s+(?:שלי|שלנו|הפתוחות)|'
+        r'^קניות$',
         re.IGNORECASE
     )
     if _SHOW_SHOPPING_RE.search(msg):
@@ -1395,8 +1399,8 @@ def ai_chat_stream():
         streamed  = [False]
 
         # ── Path 1: Gemini Native with Google Search grounding ────────────────
-        # This is the same technology Gemini.ai uses — real Google Search results
-        if _gemini_native_available:
+        # Only for explicit web_search intent — prevents Google Search on app queries
+        if _gemini_native_available and ci_intent == 'web_search':
             try:
                 # Build prompt: system + conversation history + user message
                 today_str_g = datetime.now(timezone.utc).strftime('%Y-%m-%d')
@@ -1499,8 +1503,8 @@ def ai_chat_stream():
                 [MODEL_FALLBACK, MODEL_EXTRA2, 'llama-3.3-70b-versatile', 'llama-3.1-70b-versatile'],
             )
 
-        # Fallback: if nothing worked and we haven't searched yet — try search + one more attempt
-        if not streamed[0] and _tavily_client and not already_searched:
+        # Fallback: if nothing worked and it's a web_search intent — try search + one more attempt
+        if not streamed[0] and _tavily_client and not already_searched and ci_intent == 'web_search':
             yield ev({'type': 'status', 'text': '🔍 מחפש מידע עדכני...'})
             yield from _do_tavily_search(message, max_results=3, include_images=False)
             if already_searched:
