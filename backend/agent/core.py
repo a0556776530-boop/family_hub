@@ -274,9 +274,9 @@ class AgentCore:
 
         streamed = [False]
 
-        # ── Path 1: Gemini Native with Google Search grounding ────────────
+        # ── Path 1: Gemini Native (only when Tavily has no results) ─────
         needs_realtime = (understanding or {}).get('needs_realtime', True)
-        if not streamed[0] and needs_realtime and self.router._gemini_native_available():
+        if not streamed[0] and needs_realtime and not context.search_results and self.router._gemini_native_available():
             yield from self._stream_gemini_native(message, user, history, full_text, streamed)
 
         # ── Path 2: OpenAI-compat (Gemini then Groq) ──────────────────────
