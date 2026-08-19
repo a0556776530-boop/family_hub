@@ -143,6 +143,25 @@ export function useLocationTracking(user) {
     }
   }, [user, sendPosition])
 
+  // When the app comes back to foreground, immediately get and send current position.
+  // watchPosition stops firing in background browser tabs — this catches "user opens app".
+  useEffect(() => {
+    if (!user || Capacitor.isNativePlatform()) return // native background geolocation handles this itself
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (!('geolocation' in navigator)) return
+      if (watcherId.current == null) return
+      lastSentAt.current = 0 // bypass throttle — position is likely stale after backgrounding
+      navigator.geolocation.getCurrentPosition(
+        pos => sendPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+        () => {},
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+      )
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [user, sendPosition])
+
   // Stop any live watcher on unmount so it never outlives the component that started it.
   useEffect(() => {
     return () => { if (watcherId.current != null) stop() }

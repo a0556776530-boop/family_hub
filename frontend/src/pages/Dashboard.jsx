@@ -5,7 +5,6 @@ import BottomNav from '../components/layout/BottomNav'
 import FAB from '../components/layout/FAB'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
-import { useLocationTrackingContext } from '../context/LocationTrackingContext'
 
 const PRIORITY_COLOR = { high: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400', medium: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400', low: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400' }
 const PRIORITY_LABEL = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' }
@@ -14,8 +13,6 @@ export default function Dashboard() {
   const { user } = useAuth()
   const navigate  = useNavigate()
   const isParent  = user?.role === 'parent'
-  const isChild   = user?.role === 'child' || user?.role === 'member'
-  const locCtx    = useLocationTrackingContext()
 
   const [data, setData]           = useState(null)
   const [tasks, setTasks]         = useState([])
@@ -68,34 +65,6 @@ export default function Dashboard() {
               <p className="text-amber-600 dark:text-amber-400 text-xs">{awaitingCount} משימה{awaitingCount > 1 ? 'ות' : ''} מחכות לאישור</p>
             </div>
             <svg className="w-5 h-5 text-amber-400 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        )}
-
-        {/* Child: location tracking status banner */}
-        {isChild && locCtx && !locCtx.consented && (
-          <button onClick={() => navigate('/profile')}
-            className="w-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-2xl px-4 py-3.5 flex items-center gap-3 active:scale-95 transition-transform shadow-sm">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-800/40 flex items-center justify-center text-xl shrink-0">📍</div>
-            <div className="flex-1 text-right">
-              <p className="font-bold text-blue-800 dark:text-blue-300 text-sm">הפעל שיתוף מיקום</p>
-              <p className="text-blue-600 dark:text-blue-400 text-xs">ההורים לא יכולים לראות אותך — לחץ להפעלה</p>
-            </div>
-            <svg className="w-5 h-5 text-blue-400 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        )}
-        {isChild && locCtx?.consented && locCtx.status === 'denied' && (
-          <button onClick={() => navigate('/profile')}
-            className="w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-2xl px-4 py-3.5 flex items-center gap-3 active:scale-95 transition-transform shadow-sm">
-            <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-800/40 flex items-center justify-center text-xl shrink-0">🚫</div>
-            <div className="flex-1 text-right">
-              <p className="font-bold text-red-800 dark:text-red-300 text-sm">מיקום חסום</p>
-              <p className="text-red-600 dark:text-red-400 text-xs">הדפדפן חסם גישה — לחץ לפתרון</p>
-            </div>
-            <svg className="w-5 h-5 text-red-400 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
           </button>

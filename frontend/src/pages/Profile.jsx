@@ -4,9 +4,7 @@ import BottomNav from '../components/layout/BottomNav'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useFamily } from '../context/FamilyContext'
-import { useLocationTrackingContext } from '../context/LocationTrackingContext'
 import { isWebAuthnSupported, registerFingerprint } from '../utils/webauthn'
-import LocationConsentScreen from '../components/LocationConsentScreen'
 import { RINGTONES, getSelectedRingtone, setSelectedRingtone, playRingtone } from '../utils/ringtones'
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -262,27 +260,15 @@ const ROLE_MAP = {
   member: { label: 'ילד',  emoji: '👦' },
 }
 
-const LOCATION_STATUS_LABEL = {
-  idle:        'כבוי',
-  requesting:  'מבקש הרשאה...',
-  active:      '🟢 פעיל',
-  denied:      '❌ הרשאה נדחתה',
-  unsupported: 'לא נתמך במכשיר זה',
-  error:       'שגיאה',
-}
 
 export default function Profile() {
   const { user, logout, refreshUser } = useAuth()
   const { family, refreshFamily }     = useFamily()
-  const location = useLocationTrackingContext()
   const navigate = useNavigate()
   const fileRef  = useRef(null)
 
-  const isChild = user?.role === 'child' || user?.role === 'member'
-
   const [uploading, setUploading] = useState(false)
   const [sheet, setSheet]         = useState(null)
-  const [showLocationConsent, setShowLocationConsent] = useState(false)
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [leaveError, setLeaveError]     = useState('')
   const [fpRegistered, setFpRegistered] = useState(false)
@@ -491,35 +477,6 @@ export default function Profile() {
           )}
         </Section>
 
-        {/* Location sharing */}
-        {isChild && location && (
-          <Section title="מיקום">
-            <Row icon="📍" label="שיתוף מיקום עם ההורים"
-              value={LOCATION_STATUS_LABEL[location.status] || location.status}
-              noBorder
-              rightEl={
-                <button
-                  onClick={() => location.consented ? location.revoke() : setShowLocationConsent(true)}
-                  disabled={location.status === 'requesting'}
-                  className={`text-xs font-bold px-3.5 py-1.5 rounded-xl transition-colors active:scale-95 disabled:opacity-50 ${location.consented ? 'bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400' : 'bg-blue-600 text-white'}`}>
-                  {location.status === 'requesting' ? '...' : location.consented ? 'כבה' : 'הפעל'}
-                </button>
-              }
-            />
-            {location.status === 'denied' && (
-              <div className="mx-4 mb-3 px-3 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl text-xs text-red-600 dark:text-red-400">
-                ❌ הדפדפן חסם גישה למיקום. כנס להגדרות הדפדפן → אתרים → מיקום ואפשר לאפליקציה.
-              </div>
-            )}
-            {location.status === 'error' && (
-              <div className="mx-4 mb-3 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
-                <span>⚠️</span>
-                <span>שגיאה בקבלת מיקום — ודא שה-GPS פעיל ונסה שוב.{location.error ? ` (${location.error})` : ''}</span>
-              </div>
-            )}
-          </Section>
-        )}
-
         {/* Ringtone picker */}
         <Section title="צליל צלצול">
           <div className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -606,13 +563,6 @@ export default function Profile() {
           confirmLabel="עזוב" danger onConfirm={handleLeave} onClose={() => setSheet(null)}
           loading={leaveLoading} error={leaveError} />
       )}
-      {showLocationConsent && (
-        <LocationConsentScreen
-          onAllow={async () => { setShowLocationConsent(false); await location.grant() }}
-          onDecline={() => setShowLocationConsent(false)}
-        />
-      )}
-
       <BottomNav />
     </div>
   )
