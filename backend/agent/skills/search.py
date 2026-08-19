@@ -38,7 +38,7 @@ class SearchSkill(Skill):
             from tavily import TavilyClient
             key = os.environ.get('TAVILY_API_KEY', '')
             if not key:
-                return ToolResult.fail('TAVILY_API_KEY חסר')
+                return ToolResult.fail('חיפוש אינו זמין כרגע')
             client = TavilyClient(api_key=key)
         except Exception as e:
             return ToolResult.fail(f'Tavily unavailable: {e}')

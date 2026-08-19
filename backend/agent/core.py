@@ -38,19 +38,10 @@ SYSTEM_PROMPT = """אתה עוזר המשפחה — AI חכם ועם אופי א
 האישיות שלך:
 חכם וישיר. מביע דעות. חוש הומור עדין. לא מתחיל ב"כמובן!" "שאלה מצוינת!" — זה מזויף.
 
-═══════════════════════════════════
-🚨 כללי ברזל — לא שוברים לעולם:
-═══════════════════════════════════
-1. לעולם אל תפלוט JSON — רק טקסט עברי.
-2. לעולם אל תמציא עובדות — ציין רק מה שמופיע בתוצאות החיפוש.
-   אם מידע ספציפי לא נמצא בתוצאות → כתוב "לא מצאתי מידע מאומת" + קישור גוגל.
-3. לעולם אל תמציא נתוני משפחה — אירועים, משימות, פריטי קניות.
-   רק מה שמדווח בתוצאות הפעולות.
-
-פורמט:
-• ידע כללי (היסטוריה, מדע, אנשים): ענה מלא ובטוח
-• מידע עדכני (ספורט, חדשות): הסתמך אך ורק על תוצאות החיפוש
-• בסוף תשובה עובדתית: 🔍 [חפש ב-Google](https://www.google.com/search?q=TERMS)
+כללי ברזל:
+1. לעולם אל תפלוט JSON — רק טקסט עברי רגיל.
+2. לעולם אל תמציא נתוני משפחה — אירועים, משימות, קניות — רק מה שדווח בתוצאות הפעולות.
+3. מידע עדכני שאינך בטוח בו (תוצאות ספורט, חדשות היום) — ציין שהמידע עשוי להיות לא עדכני.
 
 תאריך היום: {today}"""
 
@@ -256,13 +247,11 @@ class AgentCore:
             if h.get('role') in ('user', 'assistant') and h.get('content'):
                 msgs.append({'role': h['role'], 'content': str(h['content'])})
 
-        # If we ran tool steps → tell the LLM what happened
-        exec_ctx = context.to_response_context()
-        if exec_ctx and exec_ctx != '(לא בוצעו פעולות)':
-            msgs.append({'role': 'user', 'content':
-                f'פעולות שבוצעו:\n{exec_ctx}\n\nענה על בקשת המשתמש: {message}'})
-        elif context.search_results:
-            # Web search results → inject as context
+        # Build LLM context based on what actually succeeded
+        has_successes = bool(context.results)
+
+        if context.search_results:
+            # Web search succeeded → inject results with strict grounding
             ctx = (
                 '⚠️ SEARCH RESULTS — cite ONLY these. Do NOT add facts not found here.\n'
                 'If specific fact not in results → say "לא מצאתי מידע מאומת" + Google link.\n\n'
@@ -271,7 +260,13 @@ class AgentCore:
                 ctx += f'[{i+1}] {r.get("title","")} | {r.get("url","")}\n{r.get("content","")[:300]}\n\n'
             msgs.append({'role': 'user', 'content': f'[{ctx.strip()}]'})
             msgs.append({'role': 'user', 'content': message})
+        elif has_successes:
+            # Other tools succeeded (shopping/tasks/calendar) → summarize what happened
+            exec_ctx = context.to_response_context()
+            msgs.append({'role': 'user', 'content':
+                f'פעולות שבוצעו:\n{exec_ctx}\n\nענה על בקשת המשתמש: {message}'})
         else:
+            # No tools succeeded (or pure conversation) → just answer from knowledge
             msgs.append({'role': 'user', 'content': message})
 
         def ev(obj):
