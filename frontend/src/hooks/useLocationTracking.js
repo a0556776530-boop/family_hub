@@ -51,11 +51,15 @@ export function useLocationTracking(user) {
     const now = Date.now()
     if (now - lastSentAt.current < MIN_INTERVAL_MS) return
     lastSentAt.current = now
-    postLocationUpdate({
+    const payload = {
       device_id:   deviceId.current,
       lat, lng, accuracy_m,
       captured_at: capturedAt || new Date().toISOString(),
-    }).catch(() => {})
+    }
+    // Retry once after 15 s — handles Render cold-start waking up
+    postLocationUpdate(payload).catch(() => {
+      setTimeout(() => postLocationUpdate(payload).catch(() => {}), 15000)
+    })
   }, [])
 
   const stop = useCallback(async () => {
@@ -144,18 +148,20 @@ export function useLocationTracking(user) {
   }, [user, sendPosition])
 
   // When the app comes back to foreground, immediately get and send current position.
-  // watchPosition stops firing in background browser tabs — this catches "user opens app".
+  // On web: watchPosition stops firing in background tabs. On native: the background watcher
+  // only fires on movement (distanceFilter), so a stationary child never refreshes unless
+  // the app is opened — we force a fix here to keep the parent map current.
   useEffect(() => {
-    if (!user || Capacitor.isNativePlatform()) return // native background geolocation handles this itself
+    if (!user) return
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (!('geolocation' in navigator)) return
       if (watcherId.current == null) return
-      lastSentAt.current = 0 // bypass throttle — position is likely stale after backgrounding
+      lastSentAt.current = 0 // bypass throttle — position may be stale after backgrounding
       navigator.geolocation.getCurrentPosition(
         pos => sendPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
         () => {},
-        { enableHighAccuracy: false, timeout: 8000, maximumAge: 0 }
+        { enableHighAccuracy: Capacitor.isNativePlatform(), timeout: 10000, maximumAge: 30000 }
       )
     }
     document.addEventListener('visibilitychange', onVisible)
