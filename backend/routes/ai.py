@@ -1395,8 +1395,9 @@ def ai_chat_stream():
 
         yield ev({'type': 'status', 'text': '💭 מנסח תשובה...'})
 
-        full_text = []
-        streamed  = [False]
+        full_text  = []
+        streamed   = [False]
+        _errors: list[str] = []  # collect real errors for debugging
 
         # ── Path 1: Gemini Native SDK (most reliable path) ───────────────────────
         # web_search → with Google Search grounding tool
@@ -1468,7 +1469,9 @@ def ai_chat_stream():
                     streamed[0] = True
                     print(f'[stream] gemini-native ({ci_intent}): OK', file=_sys.stderr)
             except Exception as _ne:
-                print(f'[stream] gemini-native failed: {_ne!r}', file=_sys.stderr)
+                _err_msg = f'gemini-native: {type(_ne).__name__}: {str(_ne)[:120]}'
+                print(f'[stream] {_err_msg}', file=_sys.stderr)
+                _errors.append(_err_msg)
 
         # ── Path 2: Tavily pre-search + OpenAI-compat Gemini/Groq ─────────────
         if not streamed[0]:
@@ -1503,7 +1506,9 @@ def ai_chat_stream():
                         print(f'[stream] {model}: empty response, trying next', file=_sys.stderr)
                         continue
                     except Exception as me:
-                        print(f'[stream] {model}: {me!r}', file=_sys.stderr)
+                        _em = f'{model}: {type(me).__name__}: {str(me)[:80]}'
+                        print(f'[stream] {_em}', file=_sys.stderr)
+                        _errors.append(_em)
                         continue
 
         if not streamed[0]:
@@ -1574,7 +1579,8 @@ def ai_chat_stream():
                 'conversation_id': cid,
             })
         else:
-            yield ev({'type': 'error', 'message': 'הגענו לגבול השימוש — נסה שוב מחר 🌅'})
+            _dbg = ' | '.join(_errors[:3]) if _errors else 'no errors captured'
+            yield ev({'type': 'error', 'message': f'AI לא זמין כרגע 🔧\n\nDebug: {_dbg}'})
 
     return Response(
         stream_with_context(generate()),
