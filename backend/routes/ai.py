@@ -865,15 +865,15 @@ def _classify_and_execute(message, user):
             pass
 
     if not raw:
-        return None, None
+        return None, None, 'chat'
 
     try:
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         if not m:
-            return None, None
+            return None, None, 'chat'
         data = json.loads(m.group(0))
     except Exception:
-        return None, None
+        return None, None, 'chat'
 
     intent = data.get('intent', 'chat')
 
