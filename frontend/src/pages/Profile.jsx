@@ -506,6 +506,17 @@ export default function Profile() {
                 </button>
               }
             />
+            {location.status === 'denied' && (
+              <div className="mx-4 mb-3 px-3 py-2.5 bg-red-50 dark:bg-red-900/20 rounded-xl text-xs text-red-600 dark:text-red-400">
+                ❌ הדפדפן חסם גישה למיקום. כנס להגדרות הדפדפן → אתרים → מיקום ואפשר לאפליקציה.
+              </div>
+            )}
+            {location.status === 'error' && (
+              <div className="mx-4 mb-3 px-3 py-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <span>⚠️</span>
+                <span>שגיאה בקבלת מיקום — ודא שה-GPS פעיל ונסה שוב.{location.error ? ` (${location.error})` : ''}</span>
+              </div>
+            )}
           </Section>
         )}
 

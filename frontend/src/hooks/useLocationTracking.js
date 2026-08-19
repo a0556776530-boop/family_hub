@@ -6,7 +6,7 @@ import api from '../api/client'
 const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
 
 const DEVICE_ID_KEY   = 'fh_device_id'
-const MIN_INTERVAL_MS = 5 * 60 * 1000 // battery-friendly floor between server updates
+const MIN_INTERVAL_MS = 2 * 60 * 1000 // min 2 minutes between server updates
 
 function getDeviceId() {
   let id = localStorage.getItem(DEVICE_ID_KEY)
@@ -111,6 +111,18 @@ export function useLocationTracking(user) {
         setStatus('active')
       } else {
         if (!('geolocation' in navigator)) { setStatus('unsupported'); return }
+
+        // Fire an immediate low-accuracy position first so the parent sees a
+        // fresh location right away, before the high-accuracy GPS fix arrives.
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            sendPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)
+            setStatus('active')
+          },
+          () => {}, // ignore — watchPosition below handles persistent errors
+          { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+        )
+
         const id = navigator.geolocation.watchPosition(
           pos => {
             sendPosition(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy)
