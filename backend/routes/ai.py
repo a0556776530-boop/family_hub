@@ -1226,16 +1226,25 @@ def ai_chat_stream():
         images_out    = []
         already_searched = False
 
-        # Decide whether to pre-search.
-        # Never search when the query is answered by local DB data (tasks/shopping/calendar).
+        # Never search when the query is answered by local DB data.
         _is_local_query = bool(
             _TASKS_Q.search(message) or
             _SHOPPING_Q.search(message) or
             _CALENDAR_Q.search(message)
         )
+
+        # Short follow-up / reference questions — answer from conversation history, not web.
+        # Detects pronouns like "הללו", "אלו", "האלה" in short messages.
+        _FOLLOWUP_RE = re.compile(
+            r'(?:הללו|הלל|אלו|אלה|האלה|האלו|אותם|אותן|הנ"ל)',
+            re.IGNORECASE
+        )
+        _is_followup = len(message) < 55 and bool(_FOLLOWUP_RE.search(message))
+
         _should_search = (
             _tavily_client and
             not _is_local_query and
+            not _is_followup and
             len(message) > 12 and
             not _CONVERSATIONAL_RE.match(message.strip())
         )
