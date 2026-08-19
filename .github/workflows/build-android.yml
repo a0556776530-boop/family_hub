@@ -1,0 +1,62 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:   # allows manual trigger from GitHub UI
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web assets
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://family-hub-app.onrender.com
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+        run: npm run build
+
+      # The APK loads the live site from server.url — no need to bundle assets.
+      # Setting CAPACITOR_LIVE_URL injects server.url into capacitor.config.ts.
+      - name: Sync Capacitor → Android
+        working-directory: frontend
+        env:
+          CAPACITOR_LIVE_URL: https://family-hub-app.onrender.com
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        working-directory: frontend/android
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        working-directory: frontend/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: family-hub-v${{ github.run_number }}
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

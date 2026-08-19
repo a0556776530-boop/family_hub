@@ -8,6 +8,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    // When building the APK in CI, load the live site instead of bundled assets
+    // so the APK never goes stale — set CAPACITOR_LIVE_URL in GitHub Actions.
+    ...(process.env.CAPACITOR_LIVE_URL ? { url: process.env.CAPACITOR_LIVE_URL } : {}),
   },
   android: {
     // Without this, Android silently stops delivering location updates to the
