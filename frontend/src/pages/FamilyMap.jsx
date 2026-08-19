@@ -92,15 +92,38 @@ function staleness(iso) {
   return 'stale'
 }
 
-function timeAgo(iso) {
+function clockStr(iso) {
+  if (!iso) return null
+  const d   = new Date(iso)
+  const now = new Date()
+  const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const isToday     = d.toDateString() === now.toDateString()
+  const isYesterday = d.toDateString() === new Date(now - 86_400_000).toDateString()
+  if (isToday)     return time
+  if (isYesterday) return `אתמול ${time}`
+  return `${d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })} ${time}`
+}
+
+function agoStr(iso) {
   if (!iso) return null
   const sec = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
-  if (sec < 60) return 'עכשיו'
+  if (sec < 30) return 'עכשיו'
+  if (sec < 60) return `לפני ${sec} שנ'`
   const min = Math.round(sec / 60)
   if (min < 60) return `לפני ${min} דק'`
-  const hrs = Math.round(min / 60)
-  if (hrs < 24) return `לפני ${hrs} שע'`
+  const hrs = Math.floor(min / 60)
+  const rem = min % 60
+  if (hrs < 24) return `לפני ${hrs}:${String(rem).padStart(2, '0')} שע'`
   return `לפני ${Math.round(hrs / 24)} ימים`
+}
+
+// Combined: "17:32 (לפני 3:05 שע')" for stale, "לפני 4 דק'" for fresh
+function locationTimeLabel(iso) {
+  if (!iso) return null
+  const min = (Date.now() - new Date(iso).getTime()) / 60000
+  if (min < 2) return 'עכשיו'
+  if (min < 15) return agoStr(iso)
+  return `${clockStr(iso)} (${agoStr(iso)})`
 }
 
 const S = {
@@ -227,7 +250,9 @@ export default function FamilyMap() {
           <div>
             <h2 className="text-xl font-bold text-gray-800 dark:text-white">מיקום המשפחה 🗺️</h2>
             {lastRefresh && (
-              <p className="text-xs text-gray-400 mt-0.5">עודכן {timeAgo(lastRefresh.toISOString())} · מתרענן כל 30 שנ'</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                רענון אחרון: {clockStr(lastRefresh.toISOString())} · אוטומטי כל 30 שנ'
+              </p>
             )}
           </div>
           <button onClick={() => load()} disabled={loading}
@@ -332,9 +357,7 @@ export default function FamilyMap() {
                         <p className="font-semibold text-sm text-gray-800 dark:text-white truncate">{child.name}</p>
                         <p className={`text-xs flex items-center gap-1 ${S[st].text}`}>
                           <span className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${S[st].dot}`} />
-                          {st === 'fresh' ? `עודכן ${timeAgo(child.updated_at)}`
-                          : st === 'warn'  ? `לא עודכן מזמן · ${timeAgo(child.updated_at)}`
-                          :                  `מיקום ישן · ${timeAgo(child.updated_at)}`}
+                          {st === 'none' ? 'אין מיקום' : locationTimeLabel(child.updated_at)}
                         </p>
                       </div>
                       <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -375,7 +398,16 @@ export default function FamilyMap() {
                 </div>
                 <div>
                   <p className="font-bold text-gray-800 dark:text-white text-lg">{selected.name}</p>
-                  <p className={`text-sm ${S[staleness(selected.updated_at)].text}`}>עודכן {timeAgo(selected.updated_at)}</p>
+                  {selected.updated_at ? (
+                    <div>
+                      <p className={`text-sm font-semibold ${S[staleness(selected.updated_at)].text}`}>
+                        עדכון אחרון: {clockStr(selected.updated_at)}
+                      </p>
+                      <p className="text-xs text-gray-400">{agoStr(selected.updated_at)}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">אין מיקום</p>
+                  )}
                 </div>
               </div>
               {selected.accuracy_m != null && (
