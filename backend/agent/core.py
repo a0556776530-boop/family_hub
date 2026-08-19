@@ -317,15 +317,22 @@ class AgentCore:
         yield ev({'type': 'status', 'text': '🔍 מחפש ב-Google...'})
         try:
             _gnai.configure(api_key=key)
-            for tool_name, model_name in [
-                ('google_search', 'gemini-2.0-flash'),
-                ('google_search_retrieval', 'gemini-1.5-flash'),
+            model = None
+            for tools_cfg, model_name in [
+                ([{'google_search': {}}],             'gemini-2.0-flash'),
+                ([{'google_search_retrieval': {}}],   'gemini-1.5-flash'),
+                ([],                                   'gemini-2.0-flash'),
             ]:
                 try:
-                    model = _gnai.GenerativeModel(model_name=model_name, tools=tool_name)
+                    kwargs = {'model_name': model_name}
+                    if tools_cfg:
+                        kwargs['tools'] = tools_cfg
+                    model = _gnai.GenerativeModel(**kwargs)
                     break
                 except Exception:
                     continue
+            if model is None:
+                return
 
             response   = model.generate_content(
                 prompt, stream=True,
