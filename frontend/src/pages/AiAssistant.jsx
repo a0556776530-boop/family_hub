@@ -588,7 +588,7 @@ export default function AiAssistant() {
 
     try {
       const token = localStorage.getItem('fh_token')
-      const res   = await fetch(`${API_BASE}/api/ai/agent/stream`, {
+      const res   = await fetch(`${API_BASE}/api/ai/chat/stream`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body:    JSON.stringify({ message: msg, history: historyForApi, conversation_id: conversationId }),
