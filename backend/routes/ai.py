@@ -803,25 +803,34 @@ NEVER use markdown tables (pipes | and dashes ---) — they don't render.
 
 # ─── Intent classifier (~200 tokens, understands any Hebrew phrasing) ────────
 
-_INTENT_PROMPT = """ענה ב-JSON בלבד, ללא שום טקסט אחר.
+_INTENT_PROMPT = """ענה ב-JSON בלבד. אין טקסט אחר.
 
-זהה מה המשתמש רוצה מתוך האפשרויות:
-add_task | add_shopping | delete_task | complete_task | get_tasks | get_shopping | other
+אתה מסווג כוונת משתמש באפליקציה משפחתית. בחר intent אחד בלבד:
+
+INTENTS:
+show_tasks     — כל שאלה/בקשה על משימות (בכל ניסוח: "איזה משימות יש?", "אתה בטוח שאין?", "תפרט", "כמה יש?", "מה יש לי לעשות?")
+show_shopping  — כל שאלה/בקשה על רשימת קניות (בכל ניסוח)
+show_calendar  — כל שאלה/בקשה על יומן/אירועים
+show_weekly    — סקירה כללית של היום/השבוע ("מה יש לנו היום?", "מה קורה השבוע?", "מה התוכנית?")
+add_task       — בקשה להוסיף/ליצור משימה
+add_shopping   — בקשה להוסיף פריטים לקניות/לרשימה
+delete_task    — בקשה למחוק משימה
+complete_task  — בקשה לסמן משימה כבוצעה/הושלמה
+add_event      — בקשה להוסיף אירוע ליומן
+delete_event   — בקשה למחוק אירוע מהיומן
+web_search     — צריך מידע עדכני מהאינטרנט (תוצאות ספורט, חדשות, מחירים, מזג אוויר)
+chat           — שאלת ידע כללי, שיחה, הסבר, מתכון, כל דבר אחר
+
+RULES:
+- add_task: שמור תחיליות! "לתת נשיקה" לא "תת נשיקה". "לקנות" לא "קנות".
+- add_shopping: חלץ פריטים לרשימה מופרדת
+- כל שאלה על מצב משימות (כולל "בטוח שאין?", "יש לי?") = show_tasks
+- show_weekly תמיד כולל גם אירועים וגם משימות
 
 הודעה: "{msg}"
 
-חוקים:
-- add_task: בקשה להוסיף/ליצור משימה → {{"intent":"add_task","title":"שם המשימה המדויק"}}
-  ⚠️ שמור תחיליות ל׳ מ׳ ב׳ כחלק מהכותרת! "לתת נשיקה" ≠ "תת נשיקה". "לנקות" ≠ "נקות".
-  דוגמה: "תצור משימה לתת נשיקה לדבורה" → {{"intent":"add_task","title":"לתת נשיקה לדבורה"}}
-- add_shopping: בקשה להוסיף לקניות/לרשימה → {{"intent":"add_shopping","items":["פריט1","פריט2"]}}
-- delete_task: בקשה למחוק משימה → {{"intent":"delete_task","title":"שם"}}
-- complete_task: בקשה לסמן משימה כבוצע/הושלם → {{"intent":"complete_task","title":"שם"}}
-- get_tasks: בקשה לראות/להציג משימות → {{"intent":"get_tasks"}}
-- get_shopping: בקשה לראות רשימת קניות → {{"intent":"get_shopping"}}
-- other: שאלה, תלונה, שיחה, מתכון, מידע, תיקון, כל דבר שאינו פקודה ישירה → {{"intent":"other"}}
-
-JSON:"""
+JSON (כלול רק שדות רלוונטיים):
+{{"intent":"...", "title":"...", "items":[], "query":"..."}}"""
 
 
 def _classify_and_execute(message, user):
@@ -865,49 +874,60 @@ def _classify_and_execute(message, user):
     except Exception:
         return None, None
 
-    intent = data.get('intent', 'other')
-    if intent == 'other':
-        return None, None
+    intent = data.get('intent', 'chat')
 
+    # ── Read / display ────────────────────────────────────────────────────
+    if intent == 'show_tasks':
+        reply, actions = _fmt_tasks(user)
+        return reply, actions, intent
+
+    if intent == 'show_shopping':
+        reply, actions = _fmt_shopping(user)
+        return reply, actions, intent
+
+    if intent == 'show_calendar':
+        reply, actions = _fmt_calendar(user)
+        return reply, actions, intent
+
+    if intent == 'show_weekly':
+        reply, actions = _fmt_weekly(user)
+        return reply, actions, intent
+
+    # ── Write: tasks ──────────────────────────────────────────────────────
     if intent == 'add_task':
         title = str(data.get('title', '')).strip()
-        if not title:
-            return None, None
-        result = execute_tool('create_task', {'title': title}, user)
-        if result.get('created'):
-            return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}]
-
-    elif intent == 'add_shopping':
-        items = [str(i).strip() for i in (data.get('items') or []) if str(i).strip()]
-        if not items:
-            return None, None
-        result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in items]}, user)
-        if result.get('added', 0) > 0:
-            return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}]
+        if title:
+            result = execute_tool('create_task', {'title': title}, user)
+            if result.get('created'):
+                return f'✅ נוצרה משימה: **{title}**', [{'tool': 'create_task', 'result': result}], intent
 
     elif intent == 'delete_task':
         title = str(data.get('title', '')).strip()
-        if not title:
-            return None, None
-        result = execute_tool('delete_task', {'search_title': title}, user)
-        if result.get('deleted', 0) > 0:
-            return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}]
+        if title:
+            result = execute_tool('delete_task', {'search_title': title}, user)
+            if result.get('deleted', 0) > 0:
+                return f'🗑️ המשימה "{title}" נמחקה.', [{'tool': 'delete_task', 'result': result}], intent
+            return f'לא מצאתי משימה בשם "{title}".', [], intent
 
     elif intent == 'complete_task':
         title = str(data.get('title', '')).strip()
-        if not title:
-            return None, None
-        result = execute_tool('complete_task', {'search_title': title}, user)
-        if result.get('completed'):
-            return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}]
+        if title:
+            result = execute_tool('complete_task', {'search_title': title}, user)
+            if result.get('completed'):
+                return f'🎉 משימה הושלמה: **{title}**', [{'tool': 'complete_task', 'result': result}], intent
+            return f'לא מצאתי משימה פתוחה בשם "{title}".', [], intent
 
-    elif intent == 'get_tasks':
-        return _fmt_tasks(user)
+    # ── Write: shopping ───────────────────────────────────────────────────
+    elif intent == 'add_shopping':
+        items = [str(i).strip() for i in (data.get('items') or []) if str(i).strip()]
+        if items:
+            result = execute_tool('add_shopping_items', {'items': [{'name': n} for n in items]}, user)
+            if result.get('added', 0) > 0:
+                return f'🛒 נוסף לקניות: {", ".join(result["items"])}', [{'tool': 'add_shopping_items', 'result': result}], intent
 
-    elif intent == 'get_shopping':
-        return _fmt_shopping(user)
-
-    return None, None
+    # ── add/delete event → fall through to Gemini function-calling ────────
+    # ── web_search / chat → return intent only, let caller decide ─────────
+    return None, None, intent
 
 
 # ─── Shared formatters (used by keyword parser + LLM classifier) ─────────────
@@ -956,6 +976,78 @@ def _fmt_shopping(user):
         lines.append(f'\n✅ _כבר נקנו: {", ".join(i["name"] for i in done[:5])}_')
 
     return f'**רשימת הקניות ({len(pending)} פריטים)** 🛒\n' + '\n'.join(lines), []
+
+
+def _fmt_calendar(user):
+    result = execute_tool('get_upcoming_events', {}, user)
+    events = result.get('events', [])
+    if not events:
+        return '📅 אין אירועים קרובים ביומן.', []
+
+    now_d = datetime.now(timezone.utc)
+    today = now_d.strftime('%Y-%m-%d')
+    tmrw  = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
+    week  = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
+
+    def _lbl(d):
+        if d == today: return 'היום'
+        if d == tmrw:  return 'מחר'
+        if d <= week:  return f'ב-{d}'
+        return d
+
+    lines = []
+    for e in events[:10]:
+        d = e.get('date', '')
+        t = f' ב-{e["time"]}' if e.get('time') else ''
+        lines.append(f'- {e.get("emoji","📅")} **{e.get("title","")}** — {_lbl(d)}{t}')
+    return f'**אירועים קרובים ({len(events)})** 📅\n' + '\n'.join(lines), []
+
+
+def _fmt_weekly(user):
+    ev_result   = execute_tool('get_upcoming_events', {}, user)
+    task_result = execute_tool('get_tasks', {}, user)
+    events      = ev_result.get('events', [])
+    tasks       = task_result.get('tasks', [])
+
+    now_d    = datetime.now(timezone.utc)
+    today    = now_d.strftime('%Y-%m-%d')
+    tmrw     = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
+    week_end = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
+
+    def _lbl(d):
+        if d == today: return 'היום'
+        if d == tmrw:  return 'מחר'
+        if d <= week_end: return f'ב-{d}'
+        return d
+
+    parts = []
+
+    if events:
+        ev_lines = [
+            f'- {e.get("emoji","📅")} **{e.get("title","")}** — {_lbl(e.get("date",""))}'
+            + (f' ב-{e["time"]}' if e.get('time') else '')
+            for e in events[:8]
+        ]
+        parts.append(f'**אירועים קרובים ({len(events)})** 📅\n' + '\n'.join(ev_lines))
+    else:
+        parts.append('📅 אין אירועים קרובים.')
+
+    if tasks:
+        def _sk(t):
+            return ({'high':0,'medium':1,'low':2}.get(t.get('priority','medium'),1), t.get('due_date') or '9999')
+        task_lines = []
+        for t in sorted(tasks, key=_sk)[:8]:
+            icon = '🔴' if t.get('priority')=='high' else '🟡' if t.get('priority')=='medium' else '🟢'
+            line = f'- {icon} **{t["title"]}**'
+            due  = t.get('due_date','')
+            if due:
+                line += f' — {"⚠️ " if due < today else ""}עד {due}'
+            task_lines.append(line)
+        parts.append(f'\n**משימות פתוחות ({len(tasks)})** 📋\n' + '\n'.join(task_lines))
+    else:
+        parts.append('\n📋 אין משימות פתוחות.')
+
+    return '\n'.join(parts), []
 
 
 # ─── Fast regex parser (zero LLM calls — instant response) ───────────────────
@@ -1013,85 +1105,25 @@ def _keyword_parse_basic(message, user):
     if _SHOW_SHOPPING_RE.search(msg):
         return _fmt_shopping(user)
 
-    # ── Show calendar/events: "מה יש השבוע/היום ביומן/לוח שנה/אירועים" ─
+    # Calendar & weekly overview — delegate to shared formatters
     _CALENDAR_QUERY_RE = re.compile(
-        r'(?:'
-        r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ה)?(?:יום|מחר|השבוע|הערב|בשבוע|הקרוב|בחודש|הבא)(?:\s+ב)?(?:יומן|לוח|אירועים?)?|'
         r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ב)?(?:יומן|לוח\s+שנה|אירועים?)|'
         r'(?:מה|אילו|יש)\s+(?:אירועים?|תאריכים?|פגישות?|ימי\s+הולדת)(?:\s+(?:קרובים?|בקרוב|השבוע|הקרובים?))?|'
-        r'תראה\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:יומן|לוח\s+שנה|אירועים?|לוח)|'
-        r'(?:ה)?יומן|אירועים\s+(?:קרובים?|השבוע)|מה\s+(?:יש\s+)?(?:לנו\s+)?(?:בתאריך|ב-)'
-        r')',
+        r'תראה\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:יומן|לוח\s+שנה|אירועים?|לוח)',
         re.IGNORECASE
     )
+    _WEEKLY_QUERY_RE = re.compile(
+        r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ה)?(?:יום|מחר|השבוע|הערב|הקרוב)',
+        re.IGNORECASE
+    )
+    if _WEEKLY_QUERY_RE.search(msg):
+        return _fmt_weekly(user)
     if _CALENDAR_QUERY_RE.search(msg):
-        ev_result   = execute_tool('get_upcoming_events', {}, user)
-        events      = ev_result.get('events', [])
-        task_result = execute_tool('get_tasks', {}, user)
-        tasks       = task_result.get('tasks', [])
-
-        now_d    = datetime.now(timezone.utc)
-        today    = now_d.strftime('%Y-%m-%d')
-        tmrw     = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
-        week_end = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
-
-        def _label(date_str):
-            if date_str == today:    return 'היום'
-            if date_str == tmrw:     return 'מחר'
-            if date_str <= week_end: return f'ב-{date_str}'
-            return date_str
-
-        parts = []
-
-        # Events section
-        if events:
-            ev_lines = []
-            for e in events[:8]:
-                d = e.get('date', '')
-                t = f' ב-{e["time"]}' if e.get('time') else ''
-                ev_lines.append(f'- {e.get("emoji","📅")} **{e.get("title","")}** — {_label(d)}{t}')
-            parts.append(f'**אירועים קרובים ({len(events)})** 📅\n' + '\n'.join(ev_lines))
-        else:
-            parts.append('📅 אין אירועים קרובים ביומן.')
-
-        # Tasks section — always show alongside calendar overview
-        if tasks:
-            def _task_sort(t):
-                prio = {'high': 0, 'medium': 1, 'low': 2}.get(t.get('priority', 'medium'), 1)
-                return (prio, t.get('due_date') or '9999-12-31')
-            now_date = today
-            task_lines = []
-            for t in sorted(tasks, key=_task_sort)[:8]:
-                icon = '🔴' if t.get('priority') == 'high' else '🟡' if t.get('priority') == 'medium' else '🟢'
-                line = f'- {icon} **{t["title"]}**'
-                due  = t.get('due_date', '')
-                if due:
-                    line += f' — {"⚠️ " if due < now_date else ""}עד {due}'
-                task_lines.append(line)
-            parts.append(f'\n**משימות פתוחות ({len(tasks)})** 📋\n' + '\n'.join(task_lines))
-
-        return '\n'.join(parts), []
+        return _fmt_calendar(user)
 
     return None, None
 
 
-# Explicit Hebrew action verbs — only these allow tool use / classifier
-_ACTION_RE = re.compile(
-    r'(?:תוסיף|הוסף|תכניס|הכנס|צור|תצור|תיצור|להוסיף|לצור|תכתוב|'
-    r'רשום|תרשום|הוסיפי|תוסיפי|הכניסי|תכניסי|קח|תקח|שים|תשים|'
-    r'תמחק|מחק|הסר|תסיר|למחוק|להסיר|תבטל|בטל|מחקי|תמחקי|'
-    r'סמן|תסמן|בצע|תבצע|השלם|תשלים|'
-    r'תחפש|חפש|תחפשי|חפשי|'
-    r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ה)?(?:יום|מחר|השבוע|הערב)(?:\s+ב)?(?:יומן|אירועים?)?|'
-    r'מה\s+(?:יש\s+)?(?:לנו\s+)?(?:ב)?(?:יומן|לוח\s+שנה|אירועים?)|'
-    r'(?:מה|אילו|יש)\s+(?:אירועים?|תאריכים?|פגישות?)(?:\s+(?:קרובים?|בקרוב|השבוע))?|'
-    r'תראה\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:יומן|לוח\s+שנה|אירועים?)|'
-    r'מה\s+(?:יש\s+)?(?:ב)?(?:משימות|רשימ(?:ה|ת)|קניות)|'
-    r'אשמח\s+(?:אם\s+)?(?:ש)?ת(?:וסיף|כניס|צור)|'
-    r'(?:אני\s+)?(?:צריך|צריכה)\s+(?:ש)?(?:תוסיף|להוסיף)|'
-    r'(?:צריך|צריכה|חסר|חסרה)\s+(?:לנו\s+)?(?:עוד\s+)?(?!ל(?:עשות|לעשות)))',
-    re.IGNORECASE
-)
 
 
 # ─── Diagnostics endpoint ────────────────────────────────────────────────────
@@ -1224,25 +1256,35 @@ def ai_chat_stream():
             yield ev({'type': 'error', 'message': 'הודעה ריקה'})
             return
 
-        # Fast path: action verbs → instant done (no streaming needed)
-        if _ACTION_RE.search(message):
-            kw_reply, kw_actions = _keyword_parse_basic(message, user)
-            if kw_reply:
-                cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, kw_reply, kw_actions, [])
-                yield ev({'type': 'done', 'reply': kw_reply, 'actions': kw_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
-                return
-            ci_reply, ci_actions = _classify_and_execute(message, user)
-            if ci_reply:
-                cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, ci_reply, ci_actions, [])
-                yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
-                return
+        # ── Step 1: instant regex fast-path (zero LLM, ~0ms) ────────────────
+        kw_reply, kw_actions = _keyword_parse_basic(message, user)
+        if kw_reply:
+            cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, kw_reply, kw_actions, [])
+            yield ev({'type': 'done', 'reply': kw_reply, 'actions': kw_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
+            return
 
-        # Knowledge path: build message list with family context
+        # ── Step 2: LLM intent classifier — handles ANY phrasing (~200ms) ─
+        yield ev({'type': 'status', 'text': '🤔 מבין...'})
+        ci_reply, ci_actions, ci_intent = _classify_and_execute(message, user)
+        if ci_reply:
+            cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, ci_reply, ci_actions, [])
+            yield ev({'type': 'done', 'reply': ci_reply, 'actions': ci_actions or [], 'sources': [], 'images': [], 'conversation_id': cid})
+            return
+
+        # ── Step 3: Knowledge path — Gemini (streaming) ───────────────────
+        # Use the intent from the classifier to decide whether to search
+        _should_search = (
+            _tavily_client and
+            ci_intent == 'web_search'
+        )
+
         today_str   = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         system_text = SYSTEM_PROMPT.replace('{today}', today_str)
-        fam_ctx     = _get_detailed_context(user, message)
-        if fam_ctx:
-            system_text += f'\n\nהקשר משפחתי (עדכני):\n{fam_ctx}'
+        # For chat intent, inject minimal context; for web_search, skip DB context
+        if ci_intent not in ('web_search', 'chat'):
+            fam_ctx = _get_detailed_context(user, message)
+            if fam_ctx:
+                system_text += f'\n\nהקשר משפחתי (עדכני):\n{fam_ctx}'
         msgs = [{'role': 'system', 'content': system_text}]
         for h in history_raw[-20:]:
             if h.get('role') in ('user', 'assistant') and h.get('content'):
@@ -1253,43 +1295,6 @@ def ai_chat_stream():
         sources       = []
         images_out    = []
         already_searched = False
-
-        # ── Search gating: opt-IN only for clearly external-data queries ────
-        # Default is NO search. Only search when the message explicitly signals
-        # a need for real-time / external information.
-
-        # 1. App data → always local, never search
-        _is_local_query = bool(
-            _TASKS_Q.search(message) or
-            _SHOPPING_Q.search(message) or
-            _CALENDAR_Q.search(message)
-        )
-
-        # 2. Explicitly realtime signals → DO search
-        _REALTIME_RE = re.compile(
-            r'(?:'
-            # Sports
-            r'תוצא[הת]|ניצח|הפסיד|גול|מחזור|ליגה|אליפות|'
-            r'כדורגל|כדורסל|טניס|בייסבול|NFL|NBA|UEFA|FIFA|Champions|LaLiga|Premier|Serie|Bundesliga|'
-            r'ברצלונה|ריאל\s+מדריד|מנצ\'סטר|ליברפול|פריז|הפועל|מכבי|'
-            # News / current events
-            r'חדשות|מה\s+קורה|מה\s+קרה|מה\s+חדש|עדכון\s+(?:על|ב)|'
-            r'פוליטיקה|ממשלה|כנסת|ביטחון|צה"ל|פיגוע|בחירות|'
-            # Prices / market
-            r'מחיר|שער|מניה|דולר|אירו|ביטקוין|'
-            # Weather
-            r'מזג\s+אוויר|טמפרטורה|גשם|חום|קור\s+ב'
-            r')',
-            re.IGNORECASE
-        )
-        _needs_realtime = bool(_REALTIME_RE.search(message))
-
-        _should_search = (
-            _tavily_client and
-            not _is_local_query and
-            _needs_realtime and
-            not _CONVERSATIONAL_RE.match(message.strip())
-        )
 
         # Detect query type for smarter search targeting
         _SPORTS_TERMS_RE = re.compile(
