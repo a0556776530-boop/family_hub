@@ -1656,7 +1656,7 @@ def ai_chat():
             cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, kw_reply, kw_actions, [])
             return jsonify({'reply': kw_reply, 'actions': kw_actions or [], 'conversation_id': cid}), 200
         # Fallback: LLM classifier for complex phrasing (~80 tokens, fast)
-        ci_reply, ci_actions = _classify_and_execute(message, user)
+        ci_reply, ci_actions, _ = _classify_and_execute(message, user)
         if ci_reply:
             cid = _save_conversation(user['family_id'], str(user['_id']), conversation_id, message, ci_reply, ci_actions, [])
             return jsonify({'reply': ci_reply, 'actions': ci_actions or [], 'conversation_id': cid}), 200
@@ -1798,7 +1798,7 @@ def ai_chat():
         err = str(e)
         # Last resort: keyword parsing only for action messages
         if use_tools:
-            kw_reply, kw_actions = _classify_and_execute(message, user)
+            kw_reply, kw_actions, _ = _classify_and_execute(message, user)
             if not kw_reply:
                 kw_reply, kw_actions = _keyword_parse_basic(message, user)
             if kw_reply:
