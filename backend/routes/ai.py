@@ -771,6 +771,29 @@ SYSTEM_PROMPT = """אתה עוזר המשפחה — AI חכם ועם אופי א
 → החלף TERMS במילות חיפוש מתאימות באנגלית.
 
 ═══════════════════════════════════════
+פורמט נתוני משפחה (משימות / קניות / אירועים):
+═══════════════════════════════════════
+
+NEVER use markdown tables (pipes | and dashes ---) — they don't render.
+
+כשמציג משימות — השתמש בפורמט הזה בלבד:
+**המשימות שלך** ✅
+
+• **שם המשימה** — עד תאריך (אם יש)
+• **שם המשימה** ⚡ (אם עדיפות גבוהה)
+
+אם אין משימות: "אין משימות פתוחות כרגע 🎉"
+
+כשמציג קניות:
+**רשימת הקניות** 🛒
+• פריט א׳
+• פריט ב׳
+
+כשמציג אירועים:
+**האירועים הקרובים** 📅
+• 📅 שם האירוע — תאריך
+
+═══════════════════════════════════════
 פורמט כללי:
 • ידע כללי (היסטוריה, מדע, אנשים): ענה מלא ובטוח.
 • תשובות קצרות כשאפשר — המשתמש לא רוצה מאמר, רוצה תשובה.
@@ -1161,11 +1184,16 @@ def ai_chat_stream():
         images_out    = []
         already_searched = False
 
-        # Decide whether to pre-search:
-        # Search for any factual/knowledge query that isn't a short conversational phrase.
-        # This ensures the AI can answer ANY question, not just those matching specific keywords.
+        # Decide whether to pre-search.
+        # Never search when the query is answered by local DB data (tasks/shopping/calendar).
+        _is_local_query = bool(
+            _TASKS_Q.search(message) or
+            _SHOPPING_Q.search(message) or
+            _CALENDAR_Q.search(message)
+        )
         _should_search = (
             _tavily_client and
+            not _is_local_query and
             len(message) > 12 and
             not _CONVERSATIONAL_RE.match(message.strip())
         )
