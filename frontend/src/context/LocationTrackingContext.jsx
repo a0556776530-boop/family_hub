@@ -1,31 +1,28 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useLocationTracking } from '../hooks/useLocationTracking'
 import { useAuth } from './AuthContext'
+import LocationConsentScreen from '../components/LocationConsentScreen'
 
 const CONSENT_KEY = 'fh_location_consent'
 const LocationTrackingContext = createContext(null)
 
-// Lives once at the app root (like AuthContext/FamilyContext) so the underlying
-// native watcher survives page navigation — a component-local hook instance would
-// tear the watcher down the moment the user leaves the settings screen.
+// Lives once at the app root so the underlying native watcher survives navigation.
 export function LocationTrackingProvider({ children }) {
   const { user } = useAuth()
   const tracking = useLocationTracking(user)
   const [consented, setConsented] = useState(() => localStorage.getItem(CONSENT_KEY) === 'granted')
+  const [showConsentScreen, setShowConsentScreen] = useState(false)
 
-  // Children are auto-enrolled — no opt-in button required.
-  // Only skip if the child explicitly revoked (rare, hidden in Profile).
+  // Show one-time consent screen for children who haven't decided yet.
+  // null = never seen it; 'granted' / 'revoked' = already decided.
   useEffect(() => {
     const isChildRole = user?.role === 'child' || user?.role === 'member'
-    if (!isChildRole) return
-    if (localStorage.getItem(CONSENT_KEY) !== 'revoked' && !consented) {
-      localStorage.setItem(CONSENT_KEY, 'granted')
-      setConsented(true)
+    if (isChildRole && localStorage.getItem(CONSENT_KEY) === null) {
+      setShowConsentScreen(true)
     }
   }, [user?.id, user?.role])
 
-  // Re-arm the watcher on every app boot if the user previously opted in — a native
-  // background watcher survives the app being backgrounded, but not a full process kill.
+  // Re-arm the watcher on every app boot if the user previously opted in.
   useEffect(() => {
     const isChildRole = user?.role === 'child' || user?.role === 'member'
     if (isChildRole && consented && tracking.status === 'idle') {
@@ -35,9 +32,16 @@ export function LocationTrackingProvider({ children }) {
   }, [user?.id, consented])
 
   const grant = async () => {
-    await tracking.start()
+    setShowConsentScreen(false)
     localStorage.setItem(CONSENT_KEY, 'granted')
     setConsented(true)
+    await tracking.start()
+  }
+
+  const decline = () => {
+    setShowConsentScreen(false)
+    localStorage.setItem(CONSENT_KEY, 'revoked')
+    setConsented(false)
   }
 
   const revoke = async () => {
@@ -48,6 +52,9 @@ export function LocationTrackingProvider({ children }) {
 
   return (
     <LocationTrackingContext.Provider value={{ ...tracking, consented, grant, revoke }}>
+      {showConsentScreen && (
+        <LocationConsentScreen onAllow={grant} onDecline={decline} />
+      )}
       {children}
     </LocationTrackingContext.Provider>
   )
