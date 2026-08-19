@@ -926,7 +926,8 @@ def _fmt_tasks(user):
     lines = []
     for t in sorted(tasks, key=_sort_key)[:15]:
         icon = '🔴' if t.get('priority') == 'high' else '🟡' if t.get('priority') == 'medium' else '🟢'
-        line = f'{icon} **{t["title"]}**'
+        # Use "- " prefix so MarkdownText renders as bullet + the emoji inline
+        line = f'- {icon} **{t["title"]}**'
         due  = t.get('due_date', '')
         if due:
             line += f' — {"⚠️ " if due < now_date else ""}עד {due}'
@@ -934,8 +935,8 @@ def _fmt_tasks(user):
             line += f' _{t["category"]}_'
         lines.append(line)
 
-    total   = len(tasks)
-    header  = f'**המשימות שלך ({total})** 📋\n' if total <= 15 else f'**המשימות שלך — {total} סה"כ, מציג 15** 📋\n'
+    total  = len(tasks)
+    header = f'**המשימות שלך ({total})** 📋\n' if total <= 15 else f'**המשימות שלך — {total} סה"כ, מציג 15** 📋\n'
     return header + '\n'.join(lines), []
 
 
@@ -988,11 +989,14 @@ def _keyword_parse_basic(message, user):
 
     # ── Show tasks ────────────────────────────────────────────────────────
     _SHOW_TASKS_RE = re.compile(
-        r'(?:מה|תראה|הצג|תציג|אילו|איזה|כמה|אלו|תגיד\s+לי|יש)\s+'
-        r'(?:ה)?(?:משימות|משימה)|'
-        r'(?:אילו|איזה)\s+משימות|'
+        r'(?:מה|תראה|הצג|תציג|אילו|איזה|כמה|אלו|תגיד\s+לי|יש)\s+(?:ה)?(?:משימות|משימה)|'
+        r'(?:אילו|איזה|כמה)\s+משימות|'
         r'משימות\s+(?:שיש|פתוחות|שלי|שלנו)|'
-        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימות',
+        r'(?:הראה|תראה)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימות|'
+        r'(?:יש\s+)?(?:לי|לנו)\s+(?:כאלה\s+)?משימות|'
+        r'(?:אין|יש)\s+(?:לי\s+)?משימות|'
+        r'(?:בטוח|בטוחה)\s+ש(?:אין|יש)\s+משימות|'
+        r'(?:תפרט|פרט|תציין|ציין|תרשום|רשום)\s+(?:את\s+)?(?:ה)?משימות',
         re.IGNORECASE
     )
     if _SHOW_TASKS_RE.search(msg):
@@ -1021,28 +1025,52 @@ def _keyword_parse_basic(message, user):
         re.IGNORECASE
     )
     if _CALENDAR_QUERY_RE.search(msg):
-        result = execute_tool('get_upcoming_events', {}, user)
-        events = result.get('events', [])
-        if not events:
-            return '📅 אין אירועים קרובים ביומן שלכם.', []
-        now_d  = datetime.now(timezone.utc)
-        today  = now_d.strftime('%Y-%m-%d')
-        tmrw   = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
-        week   = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
+        ev_result   = execute_tool('get_upcoming_events', {}, user)
+        events      = ev_result.get('events', [])
+        task_result = execute_tool('get_tasks', {}, user)
+        tasks       = task_result.get('tasks', [])
+
+        now_d    = datetime.now(timezone.utc)
+        today    = now_d.strftime('%Y-%m-%d')
+        tmrw     = (now_d + timedelta(days=1)).strftime('%Y-%m-%d')
+        week_end = (now_d + timedelta(days=7)).strftime('%Y-%m-%d')
 
         def _label(date_str):
-            if date_str == today:  return 'היום'
-            if date_str == tmrw:   return 'מחר'
-            if date_str <= week:   return f'ב-{date_str}'
-            return f'{date_str}'
+            if date_str == today:    return 'היום'
+            if date_str == tmrw:     return 'מחר'
+            if date_str <= week_end: return f'ב-{date_str}'
+            return date_str
 
-        lines = []
-        for e in events[:10]:
-            d = e.get('date', '')
-            t = f' ב-{e["time"]}' if e.get('time') else ''
-            lines.append(f'{e.get("emoji","📅")} **{e.get("title","")}** — {_label(d)}{t}')
-        header = f'📅 **אירועים קרובים ({len(events)}):**\n'
-        return header + '\n'.join(lines), []
+        parts = []
+
+        # Events section
+        if events:
+            ev_lines = []
+            for e in events[:8]:
+                d = e.get('date', '')
+                t = f' ב-{e["time"]}' if e.get('time') else ''
+                ev_lines.append(f'- {e.get("emoji","📅")} **{e.get("title","")}** — {_label(d)}{t}')
+            parts.append(f'**אירועים קרובים ({len(events)})** 📅\n' + '\n'.join(ev_lines))
+        else:
+            parts.append('📅 אין אירועים קרובים ביומן.')
+
+        # Tasks section — always show alongside calendar overview
+        if tasks:
+            def _task_sort(t):
+                prio = {'high': 0, 'medium': 1, 'low': 2}.get(t.get('priority', 'medium'), 1)
+                return (prio, t.get('due_date') or '9999-12-31')
+            now_date = today
+            task_lines = []
+            for t in sorted(tasks, key=_task_sort)[:8]:
+                icon = '🔴' if t.get('priority') == 'high' else '🟡' if t.get('priority') == 'medium' else '🟢'
+                line = f'- {icon} **{t["title"]}**'
+                due  = t.get('due_date', '')
+                if due:
+                    line += f' — {"⚠️ " if due < now_date else ""}עד {due}'
+                task_lines.append(line)
+            parts.append(f'\n**משימות פתוחות ({len(tasks)})** 📋\n' + '\n'.join(task_lines))
+
+        return '\n'.join(parts), []
 
     return None, None
 
